@@ -9,7 +9,7 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
-![E-Ink Display Demo](docs/IMG_5573.jpg)
+![E-Ink Display Demo](IMG_5573.jpg)
 
 ## Getting Started
 
