@@ -1,23 +1,24 @@
 # e-ink Subway & Weather Display
 A Raspberry Pi-powered e-ink display showing real-time subway arrival times and weather forecasts. Perfect for mounting on your wall to check train times and weather before heading out.
 
+Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
+
 # Features
 - Real-time subway arrival times
 - Current weather and 3-day forecast
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
-![E-Ink Display Demo](docs/display_demo.jpg)
-
+![E-Ink Display Demo](docs/IMG_5573.jpg)
 
 ## Getting Started
 
 ### Hardware
 - Raspberry Pi 4b+
     - SD Card, power supply, (optionally keyboard, mouse, hdmi cord, etc.)
-- Waveshare 9.7inch E-Ink display HAT for Raspberry Pi
-- Frame (optional)
-- Custom Mat (Optional)
+- [Waveshare 9.7inch E-Ink display HAT for Raspberry Pi](https://www.waveshare.com/product/displays/e-paper/9.7inch-e-paper-hat.htm)
+- [Frame](https://www.americanframe.com/natural-cherry-gallery-frame) (optional)
+- Custom Mat (Optional, but I got mine from AmericanFrame.com)
 
 ### Raspberry Pi Setup
 0. Figure out how you're going to connect to the Raspberry Pi
@@ -64,6 +65,10 @@ uv run runner.py
 
 - CairoSVG is used to convert SVGs to PNGs for the display.
 - On mac, you may need to manually compile Cairo: https://stackoverflow.com/questions/36225410/installing-cairo-and-pycairo-mac-osx
+
+## Display Modes
+Figuring out the right display mode was annoying. The full spec is [here](https://www.waveshare.net/w/upload/c/c4/E-paper-mode-declaration.pdf).
+
 
 ## To Do
 - [ ] Consider checking if the wait time still makes sense and then refresh. E.g. It's 11am. Train Arrives at 11:04 and there's no update. When time turns to 11:01, even if no update, refresh.
