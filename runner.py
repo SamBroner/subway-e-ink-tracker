@@ -6,10 +6,10 @@ import traceback
 import time
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-from subway_service import subway_service, TrainArrival
-from weather_service import weather_service
-from config import config
-from display import Display
+from services.subway_service import subway_service, TrainArrival
+from services.weather_service import weather_service
+from config.config import config
+from ui.display import Display
 import logging
 import logging.handlers
 

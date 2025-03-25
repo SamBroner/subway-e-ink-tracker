@@ -7,18 +7,18 @@ import time
 import time
 import shutil
 import logging
-from config import config
+from config.config import config
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-picdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'pic')
-font16 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 16)
-font24 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 24)
-font36 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 36)
+# Set up new asset paths
+font_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'assets/fonts/Font.ttc')
+svgdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'assets/weather_icons')
 
-imgdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'img')
-svgdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'weather_icons')
+font16 = ImageFont.truetype(font_path, 16)
+font24 = ImageFont.truetype(font_path, 24)
+font36 = ImageFont.truetype(font_path, 36)
 
 def getWeather(key, days):
     resp = requests.get("https://api.weatherapi.com/v1/forecast.json?key={}&q=11231&days={}&aqi=no&alerts=no".format(key, days))

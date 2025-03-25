@@ -9,7 +9,7 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
-![E-Ink Display Demo](IMG_5573.jpg)
+![E-Ink Display Demo](assets/images/display_demo.jpeg)
 
 ## Getting Started
 
@@ -102,3 +102,44 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ```
+
+# File Structure
+
+├── IMG_5573.jpeg
+├── README.md
+├── config.py
+├── debug_output
+│   └── current_display.png
+├── display.py
+├── fonts.py
+├── gpio_test.py
+├── layout.py
+├── nyct-test.py
+├── pic
+│   ├── 100x100.bmp
+│   ├── 7in5.bmp
+│   ├── 7in5_HD.bmp
+│   ├── 7in5_HD_b.bmp
+│   ├── 7in5_HD_r.bmp
+│   ├── 7in5_V2.bmp
+│   ├── 7in5_V2_b.bmp
+│   ├── 7in5_V2_r.bmp
+│   ├── 7in5b-b.bmp
+│   ├── 7in5b-r.bmp
+│   ├── 7in5c-b.bmp
+│   ├── 7in5c-r.bmp
+│   ├── Font.ttc
+│   ├── N-Color1.bmp
+│   └── image.bmp
+├── pyproject.toml
+├── requirements.txt
+├── runner.py
+├── subway_service.py
+├── test.py
+├── test_functions.py
+├── test_logging.py
+├── utils.py
+├── uv.lock
+├── weather_icons
+│   ...
+└── weather_service.py
