@@ -2,7 +2,8 @@
 log.txt
 
 # Images
-img/*.png
+assets/images/*.png
+debug_output/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
