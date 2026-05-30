@@ -6,6 +6,7 @@ from nyct_gtfs import NYCTFeed, Trip
 from config.config import config
 import time
 import threading
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 class TrainArrival:
     minutes_until_arrival: int
     arrival_time: str
+    arrival_timestamp: float
     train_id: str
     route_id: str
     
@@ -26,12 +28,22 @@ class SubwayService:
     def __init__(self):
         logger.info("Initializing SubwayService")
         self.station_id = config.STATION_ID
+        self.request_timeout_seconds = 10
         logger.info(f"Using station ID from config: {config.STATION_ID}")
         logger.info(f"Station ID set to: {self.station_id}")
         self._subscribers: List[Callable[[List[TrainArrival]], None]] = []
         self._update_thread: Optional[threading.Thread] = None
         self._should_run = False
         self._current_trains: List[TrainArrival] = []
+
+    def _fetch_feed(self, line_id: str) -> NYCTFeed:
+        """Fetch a feed with an explicit timeout so update loops cannot hang indefinitely."""
+        feed = NYCTFeed(line_id, fetch_immediately=False)
+        feed_url = NYCTFeed._train_to_url.get(line_id, line_id)
+        response = requests.get(feed_url, timeout=self.request_timeout_seconds)
+        response.raise_for_status()
+        feed.load_gtfs_bytes(response.content)
+        return feed
     
     def subscribe(self, callback: Callable[[List[TrainArrival]], None]):
         """Subscribe to train updates"""
@@ -78,8 +90,9 @@ class SubwayService:
         while self._should_run:
             try:
                 new_trains = self.get_upcoming_trains()
-                if self._should_notify(new_trains):
-                    self._current_trains = new_trains
+                should_notify = self._should_notify(new_trains)
+                self._current_trains = new_trains
+                if should_notify:
                     self._notify_subscribers(new_trains)
                 time.sleep(interval_seconds)
             except Exception as e:
@@ -101,7 +114,7 @@ class SubwayService:
             
             # Fetch trains for the first line
             logger.debug(f"Creating feed for line {config.TRAIN_LINE_1}")
-            feed_f = NYCTFeed(config.TRAIN_LINE_1)
+            feed_f = self._fetch_feed(config.TRAIN_LINE_1)
             logger.debug(f"Raw feed data for {config.TRAIN_LINE_1}: {feed_f}")
             # Debug: Print all unique station IDs in the feed
             station_ids = set()
@@ -119,7 +132,7 @@ class SubwayService:
             
             # Fetch trains for the second line
             logger.debug(f"Creating feed for line {config.TRAIN_LINE_2}")
-            feed_g = NYCTFeed(config.TRAIN_LINE_2)
+            feed_g = self._fetch_feed(config.TRAIN_LINE_2)
             logger.debug(f"Raw feed data for {config.TRAIN_LINE_2}: {feed_g}")
             
             # Debug: Print all unique station IDs in the feed
@@ -181,12 +194,13 @@ class SubwayService:
             arrival_time = target_stop.arrival
             now = datetime.now()
             minutes = max(0, round((arrival_time - now).total_seconds() / 60))
-            
-            logger.debug(f"Calculated arrival: {minutes} minutes from now at {arrival_time}")
+
+            logger.info(f"[SUBWAY CALC] Arrival time: {arrival_time.strftime('%I:%M %p')}, Current time: {now.strftime('%I:%M %p')}, Minutes: {minutes}")
             
             return TrainArrival(
                 minutes_until_arrival=minutes,
                 arrival_time=arrival_time.strftime("%I:%M %p"),
+                arrival_timestamp=arrival_time.timestamp(),
                 train_id=train.trip_id,
                 route_id=train.route_id
             )

@@ -7,7 +7,7 @@ class FontManager:
         self.font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'assets/fonts/Font.ttc')
         self._fonts = {}
         self._load_fonts()
-    
+
     def _load_fonts(self):
         """Load all font sizes on initialization"""
         for name, size in config.FONT_SIZES.items():

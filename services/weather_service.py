@@ -6,6 +6,7 @@ import requests
 from config.config import config
 from datetime import datetime, timedelta
 import pytz
+from services.weather_codes import RAIN_WMO_CODES, SNOW_WMO_CODES
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,18 @@ class WeatherService:
         while self._should_run:
             try:
                 weather_data = self.get_weather()
-                if weather_data != self._current_data:  # Only notify if data changed
+                changed = weather_data != self._current_data
+                logger.debug(
+                    "Weather update comparison result: changed=%s (new_type=%s, cache_type=%s)",
+                    changed,
+                    type(weather_data).__name__,
+                    type(self._current_data).__name__ if self._current_data is not None else None
+                )
+                if changed:  # Only notify if data changed
                     self._current_data = weather_data
                     self._notify_subscribers(weather_data)
+                else:
+                    logger.debug("Weather data unchanged; skipping subscriber notification")
                 time.sleep(interval_seconds)
             except Exception as e:
                 logger.error(f"Error in weather update loop: {str(e)}")
@@ -195,6 +205,34 @@ class WeatherService:
         }
         return conditions.get(wmo_code, "Clear")
 
+    def _split_precipitation_chances(
+        self,
+        precip_probability: float | int,
+        weather_code: int,
+        rain_mm: float | int,
+        snowfall_cm: float | int
+    ) -> tuple[int, int]:
+        """Split generic precip probability into rain/snow channels for UI rendering."""
+        precip_probability = int(max(0, min(100, round(float(precip_probability)))))
+        rain_mm = float(rain_mm)
+        snowfall_cm = float(snowfall_cm)
+
+        has_rain_signal = rain_mm > 0
+        has_snow_signal = snowfall_cm > 0
+
+        # Model output can include probability without non-zero hourly amount due to rounding.
+        if not has_rain_signal and not has_snow_signal:
+            has_snow_signal = weather_code in SNOW_WMO_CODES
+            has_rain_signal = weather_code in RAIN_WMO_CODES
+
+        if has_rain_signal and has_snow_signal:
+            return precip_probability, precip_probability
+        if has_snow_signal:
+            return 0, precip_probability
+        if has_rain_signal:
+            return precip_probability, 0
+        return 0, 0
+
     def get_weather(self) -> Dict:
         """Fetch current weather data and add commute forecasts"""
         try:
@@ -210,6 +248,8 @@ class WeatherService:
                 "hourly": [
                     "temperature_2m",
                     "precipitation_probability",
+                    "rain",
+                    "snowfall",
                     "weathercode",
                     "windspeed_10m",
                     "is_day"
@@ -242,9 +282,6 @@ class WeatherService:
                 'commute_forecasts': self._get_commute_forecasts(data)
             }
             
-            # Store the full response for later use
-            self._current_data = data
-            
             return weather_data
             
         except Exception as e:
@@ -276,6 +313,8 @@ class WeatherService:
             logger.debug(f"Current index: {current_idx}")
             
             conditions = {
+                'chance_of_rain': 0,
+                'chance_of_snow': 0,
                 'temp_f': data['hourly']['temperature_2m'][current_idx],
                 'condition': {
                     'text': self._get_condition_text(data['hourly']['weathercode'][current_idx]),
@@ -285,6 +324,20 @@ class WeatherService:
                 'precip_chance': data['hourly']['precipitation_probability'][current_idx],
                 'is_day': data['hourly']['is_day'][current_idx]
             }
+
+            rain_series = data['hourly'].get('rain', [])
+            snowfall_series = data['hourly'].get('snowfall', [])
+            rain_mm = rain_series[current_idx] if current_idx < len(rain_series) else 0
+            snowfall_cm = snowfall_series[current_idx] if current_idx < len(snowfall_series) else 0
+
+            chance_of_rain, chance_of_snow = self._split_precipitation_chances(
+                precip_probability=conditions['precip_chance'],
+                weather_code=data['hourly']['weathercode'][current_idx],
+                rain_mm=rain_mm,
+                snowfall_cm=snowfall_cm
+            )
+            conditions['chance_of_rain'] = chance_of_rain
+            conditions['chance_of_snow'] = chance_of_snow
             
             logger.debug(f"Generated current conditions: {conditions}")
             return conditions
@@ -321,14 +374,31 @@ class WeatherService:
         
         hourly_data = []
         for i in range(start_idx, end_idx):
+            weather_code = data['hourly']['weathercode'][i]
+            precip_probability = data['hourly']['precipitation_probability'][i]
+            rain_series = data['hourly'].get('rain', [])
+            snowfall_series = data['hourly'].get('snowfall', [])
+            rain_mm = rain_series[i] if i < len(rain_series) else 0
+            snowfall_cm = snowfall_series[i] if i < len(snowfall_series) else 0
+            chance_of_rain, chance_of_snow = self._split_precipitation_chances(
+                precip_probability=precip_probability,
+                weather_code=weather_code,
+                rain_mm=rain_mm,
+                snowfall_cm=snowfall_cm
+            )
+
             hourly_data.append({
                 'time': data['hourly']['time'][i],
                 'temp_f': data['hourly']['temperature_2m'][i],
-                'chance_of_rain': data['hourly']['precipitation_probability'][i],
+                'chance_of_precipitation': precip_probability,
+                'chance_of_rain': chance_of_rain,
+                'chance_of_snow': chance_of_snow,
+                'rain_mm': rain_mm,
+                'snowfall_cm': snowfall_cm,
                 'wind_mph': data['hourly']['windspeed_10m'][i],
                 'condition': {
-                    'text': self._get_condition_text(data['hourly']['weathercode'][i]),
-                    'code': self._map_condition_code(data['hourly']['weathercode'][i])
+                    'text': self._get_condition_text(weather_code),
+                    'code': self._map_condition_code(weather_code)
                 },
                 'is_day': data['hourly']['is_day'][i]
             })
@@ -348,14 +418,32 @@ class WeatherService:
         for i in range(current_hour, current_hour + hours):
             if i >= len(self._current_data['hourly']['time']):
                 break
+
+            weather_code = self._current_data['hourly']['weathercode'][i]
+            precip_probability = self._current_data['hourly']['precipitation_probability'][i]
+            rain_series = self._current_data['hourly'].get('rain', [])
+            snowfall_series = self._current_data['hourly'].get('snowfall', [])
+            rain_mm = rain_series[i] if i < len(rain_series) else 0
+            snowfall_cm = snowfall_series[i] if i < len(snowfall_series) else 0
+            chance_of_rain, chance_of_snow = self._split_precipitation_chances(
+                precip_probability=precip_probability,
+                weather_code=weather_code,
+                rain_mm=rain_mm,
+                snowfall_cm=snowfall_cm
+            )
+
             hourly_data.append({
                 'time': self._current_data['hourly']['time'][i],
                 'temp_f': self._current_data['hourly']['temperature_2m'][i],
-                'chance_of_rain': self._current_data['hourly']['precipitation_probability'][i],
+                'chance_of_precipitation': precip_probability,
+                'chance_of_rain': chance_of_rain,
+                'chance_of_snow': chance_of_snow,
+                'rain_mm': rain_mm,
+                'snowfall_cm': snowfall_cm,
                 'wind_mph': self._current_data['hourly']['windspeed_10m'][i],
                 'condition': {
-                    'text': self._get_condition_text(self._current_data['hourly']['weathercode'][i]),
-                    'code': self._map_condition_code(self._current_data['hourly']['weathercode'][i])
+                    'text': self._get_condition_text(weather_code),
+                    'code': self._map_condition_code(weather_code)
                 },
                 'is_day': self._current_data['hourly']['is_day'][i]
             })

@@ -5,8 +5,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Force reload environment variables
-load_dotenv(override=True)
+# Force reload environment variables. Load the .env that sits next to this file
+# (config/.env) explicitly, so it resolves regardless of the current working
+# directory — the package layout keeps config.py and .env in the config/ package.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), override=True)
 
 @dataclass
 class DisplayConfig:
@@ -31,6 +33,8 @@ class DisplayConfig:
         
         # Add vertical lane position
         self.VERTICAL_LANE_X = self.MAIN_SECTION_WIDTH
+        self.BOTTOM_SECTION_HEIGHT = self.HEIGHT - self.WEATHER_SECTION_Y
+        self.BOTTOM_VERTICAL_OFFSET = self.MAIN_SECTION_WIDTH // 2
 
 @dataclass
 class WeatherConfig:
@@ -53,6 +57,19 @@ class WeatherConfig:
         self.TOMORROW_X = self.TODAY_X + spacing
         self.OVERMORROW_X = self.TOMORROW_X + spacing
 
+        # Bottom section (bikes + enlarged current weather)
+        self.BOTTOM_SECTION_Y = display.WEATHER_SECTION_Y + 20
+        self.BIKE_SECTION_X = 20
+        self.BIKE_SECTION_WIDTH = display.BOTTOM_VERTICAL_OFFSET - self.BIKE_SECTION_X - 20
+        self.BIKE_ICON_SIZE = 100
+        self.EBIKE_ICON_SIZE = 80
+        self.BIKE_TEXT_X = self.BIKE_SECTION_X + self.BIKE_ICON_SIZE + 45
+        self.BIKE_ROW_COUNT = 2
+        self.CURRENT_SECTION_X = display.BOTTOM_VERTICAL_OFFSET
+        self.CURRENT_SECTION_WIDTH = display.WIDTH - self.CURRENT_SECTION_X - 20
+        self.CURRENT_SECTION_TOP = self.BOTTOM_SECTION_Y
+        self.CURRENT_ICON_SIZE = 220
+
 @dataclass
 class SubwayConfig:
     def __init__(self, display: DisplayConfig):
@@ -65,6 +82,38 @@ class SubwayConfig:
         # Position F and G trains at 1/4 and 3/4 of the section height
         self.F_TRAIN_Y = self.SECTION_Y + (self.SECTION_HEIGHT // 2) - (self.SECTION_HEIGHT // 4)
         self.G_TRAIN_Y = self.SECTION_Y + (self.SECTION_HEIGHT // 2) + (self.SECTION_HEIGHT // 4)
+        
+        # Train logo and text layout
+        self.LOGO_RADIUS = 80
+        self.LOGO_CENTER_X = display.MAIN_SECTION_WIDTH // 4
+        self.TEXT_MARGIN = 40
+        self.TEXT_PADDING = 100
+        self.TEXT_START_X = display.ICON_COLUMN_X + self.LOGO_RADIUS + self.TEXT_PADDING
+        self.LINE_HEIGHT = 60
+        self.LINE_SPACING = 12
+        self.TEXT_BASE_OFFSETS = {
+            1: 85,
+            2: 50,
+            3: 10,
+            4: -30,
+            5: -65
+        }
+        self.TEXT_BASE_DEFAULT_OFFSET = -70
+        
+        # Train filtering limits
+        self.MIN_TRAIN_MINUTES = 1
+        self.MAX_TRAIN_MINUTES = 40
+        self.MIN_TRAIN_COUNT = 3
+        self.MAX_TRAIN_COUNT = 6
+        self.MAX_G_TRAIN_COUNT = 4
+
+@dataclass
+class TimingConfig:
+    WEATHER_UPDATE_SECONDS: int = 300
+    SUBWAY_UPDATE_SECONDS: int = 5
+    CITIBIKE_UPDATE_SECONDS: int = 60
+    DISPLAY_MIN_INTERVAL_SECONDS: int = 1
+    DISPLAY_CLEAR_COOLDOWN_SECONDS: int = 5
 
 @dataclass
 class TimeConfig:
@@ -76,12 +125,16 @@ class Config:
     def __init__(self):
         # Environment variables
         logger.info("Loading configuration from environment variables...")
-        self.WEATHER_KEY = os.getenv('WEATHER_KEY')
         self.DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
         self.STATION_ID = os.getenv('STATION_ID')
         self.TRAIN_LINE_1 = os.getenv('TRAIN_LINE_1')
         self.TRAIN_LINE_2 = os.getenv('TRAIN_LINE_2')
-        self.WEATHER_ZIP = os.getenv('WEATHER_ZIP', '11231')  # Add default zip code
+        self.CITIBIKE_STATION_ID = os.getenv('CITIBIKE_STATION_ID')
+        self.CITIBIKE_STATION_NAME = os.getenv('CITIBIKE_STATION_NAME')
+        self.DATA_COLLECTION_ENABLED = os.getenv('DATA_COLLECTION_ENABLED', 'true').lower() == 'true'
+        self.HISTORY_DB_PATH = os.getenv('HISTORY_DB_PATH', 'data/history.db')
+        self.HISTORY_TIMEZONE = os.getenv('HISTORY_TIMEZONE', 'America/New_York')
+        self.HISTORY_BUCKET_MINUTES = max(1, int(os.getenv('HISTORY_BUCKET_MINUTES', '5')))
         
         if not self.STATION_ID:
             raise ValueError("STATION_ID must be set in .env file")
@@ -89,19 +142,22 @@ class Config:
             raise ValueError("TRAIN_LINE_1 must be set in .env file")
         if not self.TRAIN_LINE_2:
             raise ValueError("TRAIN_LINE_2 must be set in .env file")
-        if not self.WEATHER_KEY:
-            raise ValueError("WEATHER_KEY must be set in .env file")
+        if not self.CITIBIKE_STATION_ID:
+            raise ValueError("CITIBIKE_STATION_ID must be set in .env file")
+        if not self.CITIBIKE_STATION_NAME:
+            raise ValueError("CITIBIKE_STATION_NAME must be set in .env file")
         
         # Display configurations
         self.display = DisplayConfig()
         self.weather = WeatherConfig(self.display)
         self.subway = SubwayConfig(self.display)
+        self.timing = TimingConfig()
         
         # Font sizes
         self.FONT_SIZES = {
-            'small': 16,
-            'medium': 20,
-            'large': 24,
+            'small': 18,
+            'medium': 24,
+            'large': 30,
             'xlarge': 36,
             'xxlarge': 42,
             'header': 60,

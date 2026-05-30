@@ -12,6 +12,7 @@ import time
 from ui.layout import getImage
 from config.config import config
 from services.subway_service import TrainArrival
+from services.citibike_service import BikeAvailability
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +92,13 @@ class EInkDisplay:
         """Update the e-ink display using IT8951"""
         try:
             if clear:
-                self._clear_display()
+                waveform = constants.DisplayModes.GLR16
+            else:
+                waveform = constants.DisplayModes.DU
 
             logger.info("Sending image to display")
             self.display.frame_buf.paste(img)
-            self.display.draw_full(constants.DisplayModes.GLR16)
+            self.display.draw_full(waveform)
             
             logger.info("Display update complete")
             
@@ -110,7 +113,7 @@ class EInkDisplay:
         try:
             logger.info("Sending partial image to display")
             self.display.frame_buf.paste(img.crop(box), box)
-            self.display.draw_partial(constants.DisplayModes.GLR16) # .DU is faster but has ghosting
+            self.display.draw_partial(constants.DisplayModes.DU) # .DU is faster but has ghosting
             
             logger.info("Partial display update complete")
             
@@ -161,6 +164,9 @@ class Display:
         self.update_thread = threading.Thread(target=self._process_queue)
         self.update_thread.daemon = True
         self.update_thread.start()
+        self.clear_cooldown_seconds = config.timing.DISPLAY_CLEAR_COOLDOWN_SECONDS
+        self._last_clear_time = 0
+        self._pending_clear = False
     
     def initialize(self):
         """Initialize the appropriate display based on config"""
@@ -168,6 +174,7 @@ class Display:
             self.display = DebugDisplay()
         elif IS_RASPBERRY_PI:
             self.display = EInkDisplay()
+            self.display._clear_display()
         else:
             raise RuntimeError("Cannot initialize e-ink display on non-Raspberry Pi device when not in debug mode")
         
@@ -177,20 +184,35 @@ class Display:
         """Process the latest img, ensuring only one update per second"""
         while True:
             try:
+                now = time.time()
                 if self.next_frame is not None:
                     img, partial, clear = self.next_frame
-                    self.display.update(img, partial, clear)
-                    self.next_frame = None
+                    if self._pending_clear:
+                        if (now - self._last_clear_time) >= self.clear_cooldown_seconds:
+                            self.display.update(img, partial, clear)
+                            self.next_frame = None
+                            self._pending_clear = False
+                            if clear:
+                                self._last_clear_time = time.time()
+                        else:
+                            time.sleep(0.5)
+                            continue
+                    else:
+                        self.display.update(img, partial, clear)
+                        self.next_frame = None
+                        if clear:
+                            self._last_clear_time = time.time()
+                            self._pending_clear = True
                 time.sleep(1)  # Ensure only one update per second
             except Exception as e:
                 logger.error(f"Error processing update queue: {str(e)}")
                 logger.error(traceback.format_exc())
 
-    def update(self, weather_data: Dict, train_data: List[TrainArrival], partial: bool = False, clear: bool = False):
+    def update(self, weather_data: Dict, train_data: List[TrainArrival], bike_data: BikeAvailability = None, partial: bool = False, clear: bool = False):
         """Queue an update for the display with new data"""
         try:
             logger.info("Generating display image...")
-            img = getImage(weather_data, train_data)
+            img = getImage(weather_data, train_data, bike_data)
             self.next_frame = (img, partial, clear)
                 
         except Exception as e:
