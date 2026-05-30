@@ -10,7 +10,13 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
-![E-Ink Display Demo](assets/images/display_demo.jpeg)
+<p align="center">
+  <img src="assets/images/display_demo.jpeg" alt="The display mounted in a cherry frame on the wall" width="45%">
+  &nbsp;&nbsp;
+  <img src="assets/images/display_render.jpeg" alt="A render of the display output" width="45%">
+</p>
+
+<p align="center"><sub><b>Left:</b> mounted on the wall in a laser-cut mat &amp; frame. &nbsp; <b>Right:</b> a render of the display output.</sub></p>
 
 ## Getting Started
 
@@ -18,12 +24,8 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Raspberry Pi 4b+
     - SD Card, power supply, (optionally keyboard, mouse, hdmi cord, etc.)
 - [Waveshare 9.7inch E-Ink display HAT for Raspberry Pi](https://www.waveshare.com/product/displays/e-paper/9.7inch-e-paper-hat.htm)
-- [Frame](https://www.americanframe.com/natural-cherry-gallery-frame) (optional)
-- A **laser-cut mat** is the key to a clean mount — it gives the panel a crisp framed
-  window instead of a bare display, and the precise cutout holds everything aligned.
-  I had mine custom laser-cut by [American Frame](https://www.americanframe.com/).
-  See the [full write-up](https://sambroner.com/posts/raspberry-pi-train) for the
-  framing + mounting technique.
+
+(For the frame and mounting, see [Physical Build](#physical-build) below.)
 
 ### Raspberry Pi Setup
 0. Figure out how you're going to connect to the Raspberry Pi
@@ -82,6 +84,20 @@ To run:
 ```bash
 uv run runner.py
 ```
+
+## Physical Build
+
+The display reads best when it's framed like a piece of art rather than left as a
+bare panel. The key is a **laser-cut mat**: a precise cutout window holds the e-ink
+panel square and aligned behind the glass, and gives it a clean, finished border.
+
+- **Frame:** I used this [natural cherry gallery frame](https://www.americanframe.com/natural-cherry-gallery-frame).
+- **Mat:** a custom **laser-cut mat** sized to the display's active area, also from
+  [American Frame](https://www.americanframe.com/). This is what makes the mount look
+  intentional and keeps everything aligned.
+
+See the [full write-up](https://sambroner.com/posts/raspberry-pi-train) for the
+framing and mounting technique, including how the Pi and ribbon cable tuck behind.
 
 ## Testing
 
