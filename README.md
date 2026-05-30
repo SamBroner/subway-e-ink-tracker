@@ -7,7 +7,6 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Real-time subway arrival times (NYCT GTFS feeds — no API key)
 - Current Citi Bike availability for a station (GBFS feeds — no API key)
 - Current weather and hourly/daily forecast (Open-Meteo — no API key)
-- Optional SQLite history logging for long-term weather/train/bike analysis
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
@@ -20,7 +19,11 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
     - SD Card, power supply, (optionally keyboard, mouse, hdmi cord, etc.)
 - [Waveshare 9.7inch E-Ink display HAT for Raspberry Pi](https://www.waveshare.com/product/displays/e-paper/9.7inch-e-paper-hat.htm)
 - [Frame](https://www.americanframe.com/natural-cherry-gallery-frame) (optional)
-- Custom Mat (Optional, but I got mine from AmericanFrame.com)
+- A **laser-cut mat** is the key to a clean mount — it gives the panel a crisp framed
+  window instead of a bare display, and the precise cutout holds everything aligned.
+  I had mine custom laser-cut by [American Frame](https://www.americanframe.com/).
+  See the [full write-up](https://sambroner.com/posts/raspberry-pi-train) for the
+  framing + mounting technique.
 
 ### Raspberry Pi Setup
 0. Figure out how you're going to connect to the Raspberry Pi
@@ -60,10 +63,6 @@ local). Copy `config/.env.template` and fill it in:
 | `WEATHER_LAT`, `WEATHER_LON` | no | Coordinates (defaults to NYC center) |
 | `DEBUG` | no | `true` saves a render to `debug_output/` instead of driving the display |
 | `QUIET_MODE` | no | `true` suppresses console output |
-| `DATA_COLLECTION_ENABLED` | no | `true` to log history to SQLite (default `true`) |
-| `HISTORY_DB_PATH` | no | SQLite file path (default `data/history.db`) |
-| `HISTORY_TIMEZONE` | no | Local timezone for day/hour buckets (default `America/New_York`) |
-| `HISTORY_BUCKET_MINUTES` | no | Time-bucket size for joins across tables (default `5`) |
 
 Find your Citi Bike station's UUID and name in the GBFS feed:
 <https://gbfs.citibikenyc.com/gbfs/en/station_information.json>
@@ -84,43 +83,13 @@ To run:
 uv run runner.py
 ```
 
-## Historical Data
-
-When `DATA_COLLECTION_ENABLED=true`, the app stores weather, train, and bike
-observations in SQLite for long-term reporting.
-
-Recorded tables:
-- `weather_observations`
-- `bike_observations`
-- `train_snapshots`
-- `train_arrivals`
-- `combined_observations` — a time-aligned join table for easy analysis
-
-Inspect and export the database with the `history_tools.py` CLI:
-
-```bash
-# Show table row counts and observed ranges
-uv run python history_tools.py status
-
-# Export every table to CSV
-uv run python history_tools.py export --output-dir history_exports/full
-
-# Export a date window (local dates)
-uv run python history_tools.py export \
-  --start-date 2026-01-01 --end-date 2026-01-31 \
-  --output-dir history_exports/2026-01
-```
-
-The SQLite files (`data/*.db*`) are gitignored. Exported CSVs under
-`history_exports/` are easy to commit if you want to share data.
-
 ## Testing
 
-The unit tests for the Citi Bike and history modules use the stdlib `unittest`
+The unit tests for the Citi Bike module use the stdlib `unittest`
 (no extra dependencies). Run them from the repo root:
 
 ```bash
-uv run python -m unittest tests.test_citibike_service tests.test_history_store
+uv run python -m unittest tests.test_citibike_service
 ```
 
 (The other scripts under `tests/` are manual Raspberry Pi hardware checks —
@@ -173,7 +142,6 @@ sudo systemctl stop subway-eink.service
 .
 ├── runner.py            # main loop: fetch data, render, update display
 ├── utils.py             # icon rendering + shared helpers
-├── history_tools.py     # CLI: inspect / export the history database
 ├── config/
 │   ├── config.py        # all configuration + display geometry
 │   └── .env.template    # copy to config/.env and fill in
@@ -181,8 +149,7 @@ sudo systemctl stop subway-eink.service
 │   ├── subway_service.py    # MTA arrivals
 │   ├── citibike_service.py  # Citi Bike availability
 │   ├── weather_service.py   # Open-Meteo weather
-│   ├── weather_codes.py     # WMO weather code sets
-│   └── history_store.py     # SQLite logging
+│   └── weather_codes.py     # WMO weather code sets
 ├── ui/
 │   ├── display.py       # e-ink / debug display driver
 │   ├── layout.py        # screen layout + drawing

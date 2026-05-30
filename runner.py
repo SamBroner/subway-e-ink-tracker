@@ -10,7 +10,6 @@ from services.weather_service import weather_service
 from services.citibike_service import citibike_service, BikeAvailability
 from config.config import config
 from ui.display import Display
-from services.history_store import HistoryStore
 import logging
 import logging.handlers
 
@@ -58,43 +57,10 @@ class Runner:
         self.state = DisplayState()
         self.min_interval = config.timing.DISPLAY_MIN_INTERVAL_SECONDS
         self._previous_top_trains: tuple[Optional[TrainArrival], Optional[TrainArrival]] = (None, None)
-        self._latest_weather_observation_id: Optional[int] = None
-        self._latest_bike_observation_id: Optional[int] = None
-        self._latest_train_snapshot_id: Optional[int] = None
-        self.history_store: Optional[HistoryStore] = None
-        if config.DATA_COLLECTION_ENABLED:
-            self.history_store = HistoryStore(
-                db_path=config.HISTORY_DB_PATH,
-                station_id=config.STATION_ID,
-                timezone_name=config.HISTORY_TIMEZONE,
-                bucket_minutes=config.HISTORY_BUCKET_MINUTES,
-            )
 
-    def _record_combined_observation(self, event_source: str):
-        if not self.history_store:
-            return
-        try:
-            self.history_store.record_combined_observation(
-                event_source=event_source,
-                weather_data=self.state.weather_data,
-                bike_data=self.state.bike_data,
-                trains=self.state.train_data or [],
-                weather_observation_id=self._latest_weather_observation_id,
-                bike_observation_id=self._latest_bike_observation_id,
-                train_snapshot_id=self._latest_train_snapshot_id,
-            )
-        except Exception:
-            logger.error("Failed to persist combined observation", exc_info=True)
-    
     def handle_weather_update(self, weather_data: Dict):
         """Handle incoming weather updates"""
         self.state.weather_data = weather_data
-        if self.history_store:
-            try:
-                self._latest_weather_observation_id = self.history_store.record_weather(weather_data)
-            except Exception:
-                logger.error("Failed to persist weather update", exc_info=True)
-        self._record_combined_observation("weather")
         self._check_display_update(force=False)
     
     def handle_train_update(self, trains: List[TrainArrival]):
@@ -109,12 +75,6 @@ class Runner:
         
         try:
             self.state.train_data = trains
-            if self.history_store:
-                try:
-                    self._latest_train_snapshot_id = self.history_store.record_train_snapshot(trains)
-                except Exception:
-                    logger.error("Failed to persist train snapshot", exc_info=True)
-            self._record_combined_observation("train")
             current_top_trains = self._get_top_two_trains(trains)
             if self._has_significant_change(current_top_trains):
                 self._check_display_update(force=True)
@@ -129,12 +89,6 @@ class Runner:
         """Handle incoming bike availability updates"""
         logger.info(f"Bike update: {availability.classic_bikes} classic, {availability.ebikes} ebikes")
         self.state.bike_data = availability
-        if self.history_store:
-            try:
-                self._latest_bike_observation_id = self.history_store.record_bike(availability)
-            except Exception:
-                logger.error("Failed to persist bike update", exc_info=True)
-        self._record_combined_observation("bike")
         self._check_display_update(force=False)
     
     def _get_top_two_trains(self, trains: List[TrainArrival]) -> tuple[Optional[TrainArrival], Optional[TrainArrival]]:
@@ -260,8 +214,6 @@ class Runner:
             subway_service.stop_updates()
             weather_service.stop_updates()
             citibike_service.stop_updates()
-            if self.history_store:
-                self.history_store.close()
 
 if __name__ == "__main__":
     runner = Runner()

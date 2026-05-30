@@ -19,7 +19,6 @@ os.environ.setdefault("TRAIN_LINE_1", "F")
 os.environ.setdefault("TRAIN_LINE_2", "G")
 os.environ.setdefault("CITIBIKE_STATION_ID", "test-station-uuid")
 os.environ.setdefault("CITIBIKE_STATION_NAME", "Test Station")
-os.environ.setdefault("DATA_COLLECTION_ENABLED", "false")
 
 from services.citibike_service import (  # noqa: E402
     BikeAvailability,

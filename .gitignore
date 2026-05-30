@@ -1,11 +1,6 @@
 # Local planning doc — never commit
 PORT_PLAN.md
 
-# History database (SQLite)
-data/*.db
-data/*.db-shm
-data/*.db-wal
-
 # macOS
 .DS_Store
 */.DS_Store

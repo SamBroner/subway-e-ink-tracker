@@ -131,11 +131,7 @@ class Config:
         self.TRAIN_LINE_2 = os.getenv('TRAIN_LINE_2')
         self.CITIBIKE_STATION_ID = os.getenv('CITIBIKE_STATION_ID')
         self.CITIBIKE_STATION_NAME = os.getenv('CITIBIKE_STATION_NAME')
-        self.DATA_COLLECTION_ENABLED = os.getenv('DATA_COLLECTION_ENABLED', 'true').lower() == 'true'
-        self.HISTORY_DB_PATH = os.getenv('HISTORY_DB_PATH', 'data/history.db')
-        self.HISTORY_TIMEZONE = os.getenv('HISTORY_TIMEZONE', 'America/New_York')
-        self.HISTORY_BUCKET_MINUTES = max(1, int(os.getenv('HISTORY_BUCKET_MINUTES', '5')))
-        
+
         if not self.STATION_ID:
             raise ValueError("STATION_ID must be set in .env file")
         if not self.TRAIN_LINE_1:
