@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable
 from dataclasses import dataclass
 import requests
 from config.config import config

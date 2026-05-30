@@ -2,7 +2,6 @@ import logging
 import sys
 from time import sleep
 import traceback
-import subprocess
 from PIL import Image, ImageChops
 from pathlib import Path
 from typing import List, Dict

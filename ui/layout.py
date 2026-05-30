@@ -1,12 +1,10 @@
-from PIL import Image, ImageDraw, ImageFont
-from typing import Dict, List, Optional
+from PIL import Image, ImageDraw
+from typing import List, Optional
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 import time as system_time
 import math
 import pytz
-from dataclasses import dataclass
-import os
 
 from config.config import config
 from ui.fonts import fonts
@@ -17,18 +15,6 @@ from services.weather_service import weather_service
 from services.weather_codes import RAIN_WMO_CODES, SNOW_WMO_CODES
 
 logger = logging.getLogger(__name__)
-
-# Layout configuration dataclasses
-@dataclass
-class WeatherSection:
-    type: str  # "commute" only now
-    data: dict
-    width_ratio: float = 1.0
-
-@dataclass
-class WeatherLayoutConfig:
-    top_sections: List[WeatherSection]
-    bottom_sections: List[WeatherSection]
 
 class LayoutManager:
     def __init__(self):
@@ -97,11 +83,8 @@ class LayoutManager:
         
         # Calculate positions for date and time
         date_bbox = draw.textbbox((0, 0), date_str, font=font)
-        time_bbox = draw.textbbox((0, 0), time_str, font=font)
-        
         date_width = date_bbox[2] - date_bbox[0]
-        time_width = time_bbox[2] - time_bbox[0]
-        
+
         # Position date to end 30px before midline
         date_x = (self.display.WIDTH // 2) - 30 - date_width
         # Position time to start 30px after midline
@@ -224,223 +207,6 @@ class LayoutManager:
         if any(token in condition_text for token in ("rain", "drizzle", "shower", "thunder")):
             return "Rain"
         return "Precip"
-
-    def _get_weather_layout(self, weather_data: dict) -> WeatherLayoutConfig:
-        """Weather layout configuration"""
-        # Get next four commute periods (today and tomorrow)
-        commute_forecasts = weather_service.get_next_commutes(include_today=True)
-        
-        if len(commute_forecasts) < 2:
-            logger.warning("Not enough commute forecasts")
-            # Create a basic layout with just current weather
-            current_weather = weather_data["current"].copy()
-            current_weather['period'] = "Current Weather"
-            return WeatherLayoutConfig(
-                top_sections=[
-                    WeatherSection("commute", current_weather, width_ratio=1.0)
-                ],
-                bottom_sections=[]
-            )
-        
-        # Get the next two commute periods
-        next_commutes = commute_forecasts[:2]
-        
-        # Update labels based on whether they're today or tomorrow
-        ny_tz = pytz.timezone('America/New_York')
-        today = datetime.now(ny_tz).date()
-        
-        for commute in next_commutes:
-            commute_date = datetime.strptime(commute['date'], '%Y-%m-%d').date()
-            is_tomorrow = commute_date > today
-            is_morning = commute['start_time'] < '12:00'
-            
-            if is_tomorrow:
-                commute['period'] = "Tomorrow Morning" if is_morning else "Tomorrow Evening"
-            else:
-                commute['period'] = "Morning Commute" if is_morning else "Evening Commute"
-        
-        return WeatherLayoutConfig(
-            top_sections=[
-                WeatherSection("commute", next_commutes[0], width_ratio=1.0)
-            ],
-            bottom_sections=[
-                WeatherSection("commute", next_commutes[1], width_ratio=1.0)
-            ]
-        )
-
-    def _draw_weather_section(self, img: Image.Image, draw: ImageDraw.ImageDraw, 
-                         sections: List[WeatherSection], y: int, 
-                         section_height: int):
-        """Draw weather sections side by side"""
-        # Calculate total width based on main section width
-        total_width = self.display.MAIN_SECTION_WIDTH - 40  # Account for margins
-        
-        # Calculate section width (divide available space by number of sections)
-        section_width = total_width // len(sections)
-        
-        # Track current x position - start 40px more to the left
-        current_x = self.weather.MAIN_ICON_SIZE // 2 # Changed from 20 to -20
-        
-        for section in sections:
-            self._draw_weather_section_content(
-                img, draw, section,
-                current_x, y,
-                section_width, section_height
-            )
-            
-            # Update x position for next section
-            current_x += section_width
-
-    def _draw_weather_section_content(self, img: Image.Image, draw: ImageDraw.ImageDraw,
-                                       section: WeatherSection, x: int, y: int,
-                                       width: int, height: int):
-        """Draw the content for a single weather section"""
-        if section.type == "commute":
-            self._draw_commute_forecast(img, draw, section.data, x, y, width, height)
-        else:
-            logger.warning(f"Unknown section type: {section.type}")
-
-    def _draw_commute_forecast(self, img: Image.Image, draw: ImageDraw.ImageDraw, 
-                          forecast: dict, x: int, y: int, width: int, height: int):
-        """Draw a single commute forecast at the specified position"""
-        # Draw period label centered above weather block
-        if 'period' in forecast:
-            draw.text(
-                (x - 40, y),
-                forecast['period'],
-                font=fonts.get('large'),
-                fill=0,
-                anchor="lt"  # Center align text
-            )
-        
-        # Pass the center position directly to weather block
-        self._draw_weather_block(
-            img, draw, forecast,
-            x=x,
-            y=y + 35,
-            icon_size=self.weather.MAIN_ICON_SIZE
-        )
-
-    def _draw_weather_block(self, img: Image.Image, draw: ImageDraw.ImageDraw, 
-                    weather_data: dict, x: int, y: int,
-                    icon_size: int):
-        """Draw a standard weather block with icon, temp, and conditions"""
-        # Get condition code safely
-        condition_code = None
-        if 'condition_code' in weather_data:
-            condition_code = weather_data['condition_code']
-        elif 'condition' in weather_data and isinstance(weather_data['condition'], dict):
-            condition_code = weather_data['condition'].get('code')
-        elif 'condition' in weather_data and isinstance(weather_data['condition'], str):
-            condition_code = weather_data['condition']
-        
-        # Draw weather icon centered at x position
-        icon = utils.getWeatherIcon(
-            {'condition': {'code': condition_code}} if condition_code else weather_data,
-            icon_size
-        )
-        icon_x = x - (icon_size // 2)  # Center the icon at x
-        img.paste(icon, (icon_x, y), icon)
-        
-        # Text starts to the right of the centered icon
-        text_x = x + (icon_size // 2)
-        
-        # Get temperature
-        temp = weather_data.get('temperature', str(round(float(weather_data.get('temp_f', weather_data.get('temp', 0))))))
-        temp_text = f"{temp}°"
-        
-        # Draw details with different font sizes
-        details_text = []
-        
-        # Add wind speed if available
-        wind_speed = weather_data.get('wind_mph', weather_data.get('wind', {}).get('mph', 0))
-        if wind_speed:
-            # Split into number and unit
-            speed_num = str(round(float(wind_speed)))
-            details_text.append((speed_num, 'mph'))
-        
-        # Add precipitation chance if available and >= 5%
-        precipitation_chance = weather_data.get('precipitation_chance', weather_data.get('chance_of_rain', 0))
-        if precipitation_chance and int(precipitation_chance) >= 15:  # Only show if 5% or higher
-            # Split into number and unit
-            precip_num = str(precipitation_chance)
-            details_text.append((precip_num, '%'))
-
-        # Draw temperature
-        draw.text(
-            (text_x, y ),
-            temp_text,
-            font=fonts.get('xheader'),
-            fill=0
-        )
-        
-        # Draw wind speed and precipitation chance
-        if details_text:
-            large_font = fonts.get('large')
-            small_font = fonts.get('small')
-            current_x = text_x
-            
-            for i, (number, unit) in enumerate(details_text):
-                # Draw the number in large font
-                number_width = large_font.getlength(number)
-                draw.text(
-                    (current_x, y + 78),
-                    number,
-                    font=large_font,
-                    fill=0
-                )
-                
-                # Draw the unit in small font
-                unit_width = small_font.getlength(unit)
-                draw.text(
-                    (current_x + number_width, y + 85),
-                    unit,
-                    font=small_font,
-                    fill=0
-                )
-                
-                # Add separator if this isn't the last item
-                if i < len(details_text) - 1:
-                    separator = "|"
-                    separator_width = large_font.getlength(separator)
-                    draw.text(
-                        (current_x + number_width + unit_width, y + 78),
-                        separator,
-                        font=large_font,
-                        fill=0
-                    )
-                    current_x += number_width + unit_width + separator_width
-                else:
-                    current_x += number_width + unit_width
-        
-        # Draw conditions centered below icon
-        conditions = weather_data.get('conditions', 
-                                    weather_data.get('condition', {}).get('text') if isinstance(weather_data.get('condition'), dict) else weather_data.get('condition', ''))
-        conditions_text = utils.shortenWeatherText(conditions)
-        large_font = fonts.get('large')
-        
-        # Calculate text width
-        conditions_bbox = draw.textbbox((0, 0), conditions_text, font=large_font)
-        conditions_width = conditions_bbox[2] - conditions_bbox[0]
-
-        # Position based on width
-        if conditions_width <= 110:
-            # Short text - left align at text_x
-            draw.text(
-                (text_x, y + 113),
-                conditions_text,
-                font=large_font,
-                fill=0
-            )
-        else:
-            # Longer text - centered position
-            draw.text(
-                (text_x - 10, y + 152),
-                conditions_text,
-                font=large_font,
-                fill=0,
-                anchor="mt"  # Center align text
-            )
 
     def _draw_subway_info(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival]):
         """Draw subway arrival information"""

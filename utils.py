@@ -1,10 +1,7 @@
 import os
 from pathlib import Path
-from PIL import Image, ImageFont
-import requests
+from PIL import Image
 import cairosvg
-import time
-import shutil
 import logging
 from config.config import config
 from io import BytesIO
@@ -12,14 +9,9 @@ from io import BytesIO
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-FONT_PATH = BASE_DIR / 'assets' / 'fonts' / 'Font.ttc'
 ICON_ROOT = BASE_DIR / 'assets' / 'icons'
 WEATHER_ICON_DIR = ICON_ROOT / 'weather'
 UI_ICON_DIR = ICON_ROOT / 'ui'
-
-font16 = ImageFont.truetype(str(FONT_PATH), 16)
-font24 = ImageFont.truetype(str(FONT_PATH), 24)
-font36 = ImageFont.truetype(str(FONT_PATH), 36)
 
 def _render_svg(icon_path: Path, size: int) -> Image.Image:
     """Convert an SVG at icon_path to a Pillow Image of roughly size x size."""

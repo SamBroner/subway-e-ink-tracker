@@ -21,7 +21,11 @@ os.environ.setdefault("CITIBIKE_STATION_ID", "test-station-uuid")
 os.environ.setdefault("CITIBIKE_STATION_NAME", "Test Station")
 os.environ.setdefault("DATA_COLLECTION_ENABLED", "false")
 
-from services.citibike_service import BikeAvailability, CitibikeService  # noqa: E402
+from services.citibike_service import (  # noqa: E402
+    BikeAvailability,
+    CitibikeService,
+    config,
+)
 
 
 class FakeResponse:
@@ -52,6 +56,7 @@ class GetBikeAvailabilityTests(unittest.TestCase):
         self.service = CitibikeService()
         self.service.station_id = "test-station-uuid"
 
+    @patch.object(config, "CITIBIKE_STATION_NAME", "Test Station")
     @patch("services.citibike_service.requests.get")
     def test_parses_classic_and_ebike_counts(self, mock_get):
         mock_get.return_value = FakeResponse(

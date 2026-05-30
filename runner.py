@@ -1,6 +1,5 @@
 # Now import other modules
 import os
-import sys
 from datetime import datetime
 import traceback
 import time
