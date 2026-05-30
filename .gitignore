@@ -10,8 +10,9 @@ data/*.db-wal
 .DS_Store
 */.DS_Store
 
-# Logs
+# Logs (incl. rotated logs: log.txt.1, log.txt.2, ...)
 log.txt
+log.txt.*
 
 # Images
 assets/images/*.png
