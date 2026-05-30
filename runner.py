@@ -1,15 +1,15 @@
 # Now import other modules
 import os
-import sys
 from datetime import datetime
 import traceback
 import time
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-from subway_service import subway_service, TrainArrival
-from weather_service import weather_service
-from config import config
-from display import Display
+from services.subway_service import subway_service, TrainArrival
+from services.weather_service import weather_service
+from services.citibike_service import citibike_service, BikeAvailability
+from config.config import config
+from ui.display import Display
 import logging
 import logging.handlers
 
@@ -18,10 +18,8 @@ log_file = 'log.txt'
 max_bytes = 5 * 1024 * 1024  # 5MB max file size
 
 # Configure logging based on environment
-if os.getenv('QUIET_MODE', 'false').lower() == 'true':
-    log_level = logging.WARNING
-else:
-    log_level = logging.DEBUG
+quiet_mode = os.getenv('QUIET_MODE', 'false').lower() == 'true'
+log_level = logging.WARNING if quiet_mode else logging.DEBUG
 
 # Ensure log directory exists
 try:
@@ -31,9 +29,10 @@ try:
         handlers=[
             logging.handlers.RotatingFileHandler(
                 log_file,
-                maxBytes=max_bytes
+                maxBytes=max_bytes,
+                backupCount=5
             ),
-            logging.StreamHandler() if not os.getenv('QUIET_MODE') else logging.NullHandler()
+            logging.StreamHandler() if not quiet_mode else logging.NullHandler()
         ],
         force=True
     )
@@ -47,8 +46,8 @@ logger = logging.getLogger(__name__)
 class DisplayState:
     weather_data: Optional[Dict] = None
     train_data: Optional[List[TrainArrival]] = None
+    bike_data: Optional[BikeAvailability] = None
     last_display_update: float = 0
-    last_weather_change: float = 0
     last_display_clear: float = 0
 
 class Runner:
@@ -56,14 +55,12 @@ class Runner:
         logger.info("Initializing Runner")
         self.display = Display()
         self.state = DisplayState()
-        self.min_interval = 1
+        self.min_interval = config.timing.DISPLAY_MIN_INTERVAL_SECONDS
         self._previous_top_trains: tuple[Optional[TrainArrival], Optional[TrainArrival]] = (None, None)
-    
+
     def handle_weather_update(self, weather_data: Dict):
         """Handle incoming weather updates"""
         self.state.weather_data = weather_data
-        self.state.last_weather_change = time.time()
-        self.state.last_display_clear = time.time()
         self._check_display_update(force=False)
     
     def handle_train_update(self, trains: List[TrainArrival]):
@@ -87,6 +84,12 @@ class Runner:
         except Exception as e:
             logger.error(f"Error processing trains: {str(e)}")
             logger.error(traceback.format_exc())
+    
+    def handle_bike_update(self, availability: BikeAvailability):
+        """Handle incoming bike availability updates"""
+        logger.info(f"Bike update: {availability.classic_bikes} classic, {availability.ebikes} ebikes")
+        self.state.bike_data = availability
+        self._check_display_update(force=False)
     
     def _get_top_two_trains(self, trains: List[TrainArrival]) -> tuple[Optional[TrainArrival], Optional[TrainArrival]]:
         """Get the first two trains from the list"""
@@ -116,43 +119,56 @@ class Runner:
     def _check_display_update(self, force: bool = False):
         """Check if we should update the display"""
         now = time.time()
-        
-        # Don't update if we don't have both weather and train data
+
+        # Don't update if we don't have essential data (bike data is optional)
         if not self.state.weather_data or self.state.train_data is None:
+            logger.debug(f"[DISPLAY SKIP] Missing essential data - weather: {self.state.weather_data is not None}, trains: {self.state.train_data is not None}")
             return
+
+        # Warn if bike data hasn't arrived yet (but don't block display)
+        if self.state.bike_data is None:
+            logger.warning("[DISPLAY] Bike data not available, displaying without it")
             
         # Always update if this is our first update
         if self.state.last_display_update == 0:
+            logger.info("[DISPLAY UPDATE] First update")
             self._update_display()
             return
-        
+
         # If forced (train changes), update immediately
         if force:
+            logger.info("[DISPLAY UPDATE] Forced update (train change)")
             self._update_display()
             return
-        
-        # Clear the display at least once every hour
-        if (now - self.state.last_display_clear >= 3500):
-            current_time = datetime.now()
-            if (current_time.minute == 0):
-                self._update_display(True)
+
+        # Clear the display at the top of every hour (aligned to clock time)
+        current_time = datetime.now()
+        if (current_time.minute == 0) and (now - self.state.last_display_clear >= 3500):
+            logger.info("[DISPLAY UPDATE] Hourly clear")
+            self._update_display(True)
             return
-            
+
         # For weather changes, respect the minimum interval
         time_since_update = now - self.state.last_display_update
 
         if (time_since_update >= self.min_interval ):
+            logger.info(f"[DISPLAY UPDATE] Interval passed ({time_since_update:.1f}s >= {self.min_interval}s)")
             self._update_display()
             return
+        else:
+            logger.debug(f"[DISPLAY SKIP] Min interval not met ({time_since_update:.1f}s < {self.min_interval}s)")
     
     def _update_display(self, clear: bool = False):
         """Update the display with current state"""
         try:
 
+            partial = not clear
+
             self.display.update(
                 weather_data=self.state.weather_data,
                 train_data=self.state.train_data or [],
-                partial=True,
+                bike_data=self.state.bike_data,
+                partial=partial,
                 clear=clear
             )
 
@@ -176,10 +192,12 @@ class Runner:
             # Subscribe to services
             weather_service.subscribe(self.handle_weather_update)
             subway_service.subscribe(self.handle_train_update)
+            citibike_service.subscribe(self.handle_bike_update)
             
             # Start update services
-            weather_service.start_updates(interval_seconds=300)  # 5 minutes
-            subway_service.start_updates(interval_seconds=5)    # 5 seconds
+            weather_service.start_updates(interval_seconds=config.timing.WEATHER_UPDATE_SECONDS)
+            subway_service.start_updates(interval_seconds=config.timing.SUBWAY_UPDATE_SECONDS)
+            citibike_service.start_updates(interval_seconds=config.timing.CITIBIKE_UPDATE_SECONDS)
             
             # Keep the main thread running
             try:
@@ -195,6 +213,7 @@ class Runner:
             # Clean shutdown
             subway_service.stop_updates()
             weather_service.stop_updates()
+            citibike_service.stop_updates()
 
 if __name__ == "__main__":
     runner = Runner()

@@ -1,48 +1,47 @@
 import os
 from pathlib import Path
-from PIL import Image,ImageFont
-import requests
+from PIL import Image
 import cairosvg
-import time
-import time
-import shutil
 import logging
-from config import config
+from config.config import config
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-picdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'pic')
-font16 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 16)
-font24 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 24)
-font36 = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 36)
+BASE_DIR = Path(__file__).resolve().parent
+ICON_ROOT = BASE_DIR / 'assets' / 'icons'
+WEATHER_ICON_DIR = ICON_ROOT / 'weather'
+UI_ICON_DIR = ICON_ROOT / 'ui'
 
-imgdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'img')
-svgdir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'weather_icons')
-
-def getWeather(key, days):
-    resp = requests.get("https://api.weatherapi.com/v1/forecast.json?key={}&q=11231&days={}&aqi=no&alerts=no".format(key, days))
-    logger.info("Received Weather")
-    return resp.json()
-
-def getHeadlines(apiKey):
-    headlineJson = requests.get("https://newsapi.org/v2/top-headlines?country=us&apiKey={}".format(apiKey)).json()
-    logger.info("Received News")
-    return headlineJson["articles"]
-
-def getWeatherIcon(weatherReportJson, size):
-    """Convert SVG weather icon to PNG and return as PIL Image without saving to disk"""
-    
-    iconPath = getWeatherIconPath(weatherReportJson)
+def _render_svg(icon_path: Path, size: int) -> Image.Image:
+    """Convert an SVG at icon_path to a Pillow Image of roughly size x size."""
     png_data = BytesIO()
-    
     try:
-        cairosvg.svg2png(url=iconPath, write_to=png_data, parent_width=size, parent_height=size)
+        cairosvg.svg2png(
+            url=str(icon_path),
+            write_to=png_data,
+            output_width=size,
+            output_height=size,
+            parent_width=size,
+            parent_height=size
+        )
         png_data.seek(0)
         return Image.open(png_data)
     except Exception as e:
-        logger.error(f"Error creating weather icon: {str(e)}")
+        logger.error(f"Error creating icon from {icon_path}: {str(e)}")
         raise
+
+def getWeatherIcon(weatherReportJson, size):
+    """Convert SVG weather icon to PNG and return as PIL Image without saving to disk"""
+    iconPath = getWeatherIconPath(weatherReportJson)
+    return _render_svg(iconPath, size)
+
+def get_ui_icon(icon_name: str, size: int) -> Image.Image:
+    """Render a non-weather UI icon (e.g., bike, bolt) from assets/icons/ui."""
+    icon_path = UI_ICON_DIR / f"{icon_name}.svg"
+    if not icon_path.exists():
+        raise FileNotFoundError(f"UI icon '{icon_name}' not found at {icon_path}.")
+    return _render_svg(icon_path, size)
 
 # Takes a 1hr report or a "currentDay" report
 def getWeatherIconPath(weatherReportJson):
@@ -50,24 +49,24 @@ def getWeatherIconPath(weatherReportJson):
     return getWeatherIconFromSVGs(iconNum, weatherReportJson.get("is_day"))
 
 def getWeatherIconFromSVGs(iconNum, dayNum):
-    weatherIconDir = os.path.join(svgdir, iconNum)
-    icons = os.listdir(weatherIconDir)
-    if dayNum == None:
+    if not iconNum:
+        return WEATHER_ICON_DIR / "Extra" / "wi-na.svg"
+
+    weatherIconDir = WEATHER_ICON_DIR / iconNum
+    icons = [icon for icon in os.listdir(weatherIconDir) if icon != ".DS_Store"]
+    if dayNum is None:
         dayNum = 1
 
     if len(icons) == 1:
-        return os.path.join(weatherIconDir, icons[0])
-    else:
-        for icon in icons:
-            if icon == ".DS_Store":
-                # skip
-                logger.info("skip")
-            elif dayNum == 0 and icon.find("night") >= 0:
-                return os.path.join(weatherIconDir, icon)
-            elif dayNum == 1 and icon.find("night") == -1:
-                return os.path.join(weatherIconDir, icon)
+        return weatherIconDir / icons[0]
 
-    return os.path.join(svgdir, "Extra/wi-na.svg")
+    for icon in icons:
+        if dayNum == 0 and "night" in icon:
+            return weatherIconDir / icon
+        if dayNum == 1 and "night" not in icon:
+            return weatherIconDir / icon
+
+    return WEATHER_ICON_DIR / "Extra" / "wi-na.svg"
 
 def emptyImage():
     emptyImage = Image.new('1', (config.display.WIDTH, config.display.HEIGHT), 255)
