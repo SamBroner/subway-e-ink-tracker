@@ -14,8 +14,10 @@ from ui.panes.base import Pane
 class HourlyWeatherPane(Pane):
     """Right lane: the next 12 hours of forecast."""
 
-    def render(self, img, draw, ctx):
-        self._draw_vertical_lane(img, draw, ctx.weather, ctx.now)
+    def paint(self, surface, ctx):
+        # Pass the PaneSurface as both the image (icon paste) and draw target;
+        # it duck-types Image.paste and the ImageDraw calls the helpers use.
+        self._draw_vertical_lane(surface, surface, ctx.weather, ctx.now)
 
     def _draw_vertical_lane(self, img: Image.Image, draw: ImageDraw.ImageDraw, weather_data: dict, now: datetime):
         """Draw the vertical lane with hourly forecast only."""
