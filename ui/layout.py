@@ -7,6 +7,15 @@ import math
 import clock
 from config.config import config
 from ui.fonts import fonts
+from ui.panes import (
+    RenderContext,
+    DatePane,
+    SubwayPane,
+    HourlyWeatherPane,
+    CitibikePane,
+    WeatherOverviewPane,
+)
+from ui.screen import Screen
 from services.subway_service import TrainArrival
 from services.citibike_service import BikeAvailability
 import utils
@@ -21,47 +30,6 @@ class LayoutManager:
         self.weather = config.weather
         self.subway = config.subway
         self.time = config.time
-    
-    def create_image(self, weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None, subway_unavailable: bool = False) -> Image.Image:
-        """Create the display image.
-
-        ``now`` is the tz-aware reference time for all time-of-day rendering
-        (header clock, train countdowns, hourly slice, rest-of-day precip).
-        It defaults to ``clock.now()`` so production callers need not pass it,
-        while tests can pass a fixed instant to render deterministically.
-
-        ``subway_unavailable`` distinguishes "the train feeds are unreachable"
-        (shows a service-unavailable notice) from an empty ``subway_data``
-        (feeds are up but no upcoming trains).
-        """
-        if now is None:
-            now = clock.now()
-
-        img = self._create_base_image()
-        draw = ImageDraw.Draw(img)
-
-        # Draw section dividers
-        self._draw_sections(draw)
-
-        # Draw time
-        self._draw_time(draw, now)
-
-        # Draw subway information
-        self._draw_subway_info(draw, subway_data, now, subway_unavailable)
-
-        # Draw vertical lane with hourly weather
-        self._draw_vertical_lane(img, draw, weather_data, now)
-
-        # Draw bottom content (bikes + expanded current weather)
-        self._draw_bottom_sections(img, draw, weather_data, bike_data, now)
-
-        img = img.rotate(180)
-
-        return img
-    
-    def _create_base_image(self) -> Image.Image:
-        """Create a blank base image"""
-        return Image.new('L', (self.display.WIDTH, self.display.HEIGHT), 255)
     
     def _draw_sections(self, draw: ImageDraw.ImageDraw):
         """Draw the section dividing lines"""
@@ -114,9 +82,8 @@ class LayoutManager:
         draw.text((date_x, self.time.Y), date_str, font=font, fill=0)
         draw.text((time_x, self.time.Y), time_str, font=font, fill=0)
     
-    def _draw_bottom_sections(self, img: Image.Image, draw: ImageDraw.ImageDraw, weather_data: dict, bike_data: BikeAvailability | None, now: datetime):
-        """Render bikes on the left and enlarged current weather on the right."""
-        self._draw_bike_panel(img, draw, bike_data)
+    def _draw_weather_overview(self, img: Image.Image, draw: ImageDraw.ImageDraw, weather_data: dict, now: datetime):
+        """Render the enlarged current-weather card on the lower-right."""
         day_summary = None
         forecast_days = weather_data.get("forecast", {}).get("forecastday", [])
         if forecast_days:
@@ -708,6 +675,39 @@ class LayoutManager:
 # Create global layout manager instance
 layout_manager = LayoutManager()
 
+
+def _build_screen() -> Screen:
+    """Compose the panes that tile the display, with rects from config."""
+    d = config.display
+    panes = [
+        DatePane((0, 0, d.WIDTH, d.HEADER_HEIGHT)),
+        SubwayPane((0, d.TRAIN_SECTION_Y, d.MAIN_SECTION_WIDTH, d.TRAIN_SECTION_HEIGHT)),
+        HourlyWeatherPane((d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y, d.VERTICAL_LANE_WIDTH, d.TRAIN_SECTION_HEIGHT)),
+        CitibikePane((0, d.WEATHER_SECTION_Y, d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
+        WeatherOverviewPane((d.BOTTOM_VERTICAL_OFFSET, d.WEATHER_SECTION_Y, d.WIDTH - d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
+    ]
+    return Screen(panes, chrome_fn=layout_manager._draw_sections)
+
+
+_screen = _build_screen()
+
+
 # Provide single image creation function
 def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None, subway_unavailable: bool = False) -> Image.Image:
-    return layout_manager.create_image(weather_data, subway_data, bike_data, now, subway_unavailable)
+    """Render the full display.
+
+    Builds a per-frame RenderContext and delegates composition to the Screen.
+    ``now`` defaults to clock.now() so production callers need not pass it;
+    tests pass a fixed instant to render deterministically. ``subway_unavailable``
+    distinguishes unreachable train feeds from an empty (but reachable) result.
+    """
+    if now is None:
+        now = clock.now()
+    ctx = RenderContext(
+        weather=weather_data,
+        trains=subway_data,
+        bikes=bike_data,
+        now=now,
+        subway_unavailable=subway_unavailable,
+    )
+    return _screen.render(ctx)
