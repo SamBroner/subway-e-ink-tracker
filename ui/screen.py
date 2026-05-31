@@ -23,11 +23,12 @@ class Screen:
         img = Image.new('L', (d.WIDTH, d.HEIGHT), 255)
         draw = ImageDraw.Draw(img)
 
-        # Chrome first, then panes — preserving the original draw order so the
-        # output is pixel-identical to the previous create_image.
-        self._draw_chrome(draw)
+        # Panes first, then chrome on top. Panes paste opaque tiles (Approach A),
+        # so chrome must be drawn last or the dividers at pane boundaries would
+        # be overwritten.
         for pane in self.panes:
             pane.render(img, draw, ctx)
+        self._draw_chrome(draw)
 
         return img.rotate(180)
 
