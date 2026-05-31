@@ -144,3 +144,6 @@ dmypy.json
 .pyre/
 
 cairo-1.14.6/
+
+# Local deployment notes
+DEPLOYMENT.md

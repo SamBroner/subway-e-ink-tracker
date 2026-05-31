@@ -17,3 +17,8 @@ dependencies = [
     "IT8951 @ git+https://github.com/GregDMeyer/IT8951; sys_platform == 'linux'",
     "rpi-gpio>=0.7.1; sys_platform == 'linux'"
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
