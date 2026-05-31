@@ -1,5 +1,4 @@
-from PIL import Image, ImageDraw
-import logging
+from PIL import Image
 from datetime import datetime
 from typing import List
 
@@ -16,21 +15,6 @@ from ui.panes import (
 from ui.screen import Screen
 from services.subway_service import TrainArrival
 from services.citibike_service import BikeAvailability
-
-logger = logging.getLogger(__name__)
-
-
-class LayoutManager:
-    """Vestigial holder kept only so the module-level ``layout_manager`` still
-    exists for now. Chrome moved to Screen; per-pane drawing lives in ui/panes.py.
-    """
-
-    def __init__(self):
-        self.display = config.display
-
-
-# Create global layout manager instance
-layout_manager = LayoutManager()
 
 
 def _build_screen() -> Screen:
