@@ -21,35 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 class LayoutManager:
-    """Holds the cross-pane chrome (the section dividers).
-
-    Per-pane drawing now lives in ui/panes.py; this draws what spans panes.
+    """Vestigial holder kept only so the module-level ``layout_manager`` still
+    exists for now. Chrome moved to Screen; per-pane drawing lives in ui/panes.py.
     """
 
     def __init__(self):
         self.display = config.display
-
-    def _draw_sections(self, draw: ImageDraw.ImageDraw):
-        """Draw the section dividing lines"""
-        # Line between header and train section
-        draw.line((0, self.display.HEADER_HEIGHT,
-                   self.display.WIDTH, self.display.HEADER_HEIGHT), fill=0)
-
-        # Line between train and weather section - now full width
-        bottom_divider_y = self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT
-        draw.line((0, bottom_divider_y,
-                   self.display.WIDTH, bottom_divider_y), fill=0)
-
-        # Vertical line for the right lane
-        draw.line((self.display.VERTICAL_LANE_X, self.display.HEADER_HEIGHT,
-                   self.display.VERTICAL_LANE_X, self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT), fill=0)
-
-        # Additional vertical line in bottom section (mirror offset)
-        bottom_vertical_x = self.display.BOTTOM_VERTICAL_OFFSET
-        draw.line(
-            (bottom_vertical_x, bottom_divider_y, bottom_vertical_x, self.display.HEIGHT),
-            fill=0
-        )
 
 
 # Create global layout manager instance
@@ -66,7 +43,7 @@ def _build_screen() -> Screen:
         CitibikePane((0, d.WEATHER_SECTION_Y, d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
         WeatherOverviewPane((d.BOTTOM_VERTICAL_OFFSET, d.WEATHER_SECTION_Y, d.WIDTH - d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
     ]
-    return Screen(panes, chrome_fn=layout_manager._draw_sections)
+    return Screen(panes)
 
 
 _screen = _build_screen()
