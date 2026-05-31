@@ -15,8 +15,10 @@ from ui.panes.base import Pane
 class SubwayPane(Pane):
     """Train section: F/G arrivals, no-trains notice, or service-unavailable."""
 
-    def render(self, img, draw, ctx):
-        self._draw_subway_info(draw, ctx.trains, ctx.now, ctx.subway_unavailable)
+    def paint(self, surface, ctx):
+        # PaneSurface duck-types the ImageDraw calls the helpers use
+        # (text/ellipse/textbbox), so it is passed straight through as `draw`.
+        self._draw_subway_info(surface, ctx.trains, ctx.now, ctx.subway_unavailable)
 
     def _draw_subway_info(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime, subway_unavailable: bool = False):
         """Draw subway arrival information"""
