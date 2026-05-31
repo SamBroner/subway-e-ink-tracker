@@ -33,10 +33,18 @@ On mismatch the rendered image is written as `golden_views/<name>.actual.png`
 ## Scenarios
 
 Trains (F/G), weather, and bikes are varied independently plus one combined
-stressor: `full_typical`, `no_trains`, `no_f_only_g`, `no_g_only_f`, `many_f`,
+stressor: `full_typical`, `no_trains`, `no_trains_minutes`, `no_trains_hours`,
+`no_trains_far`, `service_down`, `no_f_only_g`, `no_g_only_f`, `many_f`,
 `many_g`, `one_each`, `high_wind`, `high_rain`, `snow`, `thunderstorm`, `fog`,
 `night`, `extreme_heat`, `extreme_cold`, `degraded_empty_hourly`, `zero_bikes`,
 `many_bikes`, `null_bikes`, `combined_stress`.
+
+Three subway states are distinguished: trains in the window render normally;
+no trains in the window keeps the F & G logos and adds a status line at the
+bottom of the pane reporting the gap until the next train (`no_trains*`); and
+unreachable feeds show "Service unavailable" (`service_down`, driven by the
+optional 5th scenario element `{"subway_unavailable": True}` forwarded to
+`getImage`).
 
 ## Known issues (surfaced by these tests, deferred to the pane migration)
 

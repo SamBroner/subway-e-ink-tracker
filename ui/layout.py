@@ -22,13 +22,17 @@ class LayoutManager:
         self.subway = config.subway
         self.time = config.time
     
-    def create_image(self, weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None) -> Image.Image:
+    def create_image(self, weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None, subway_unavailable: bool = False) -> Image.Image:
         """Create the display image.
 
         ``now`` is the tz-aware reference time for all time-of-day rendering
         (header clock, train countdowns, hourly slice, rest-of-day precip).
         It defaults to ``clock.now()`` so production callers need not pass it,
         while tests can pass a fixed instant to render deterministically.
+
+        ``subway_unavailable`` distinguishes "the train feeds are unreachable"
+        (shows a service-unavailable notice) from an empty ``subway_data``
+        (feeds are up but no upcoming trains).
         """
         if now is None:
             now = clock.now()
@@ -43,7 +47,7 @@ class LayoutManager:
         self._draw_time(draw, now)
 
         # Draw subway information
-        self._draw_subway_info(draw, subway_data, now)
+        self._draw_subway_info(draw, subway_data, now, subway_unavailable)
 
         # Draw vertical lane with hourly weather
         self._draw_vertical_lane(img, draw, weather_data, now)
@@ -215,14 +219,20 @@ class LayoutManager:
             return "Rain"
         return "Precip"
 
-    def _draw_subway_info(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime):
+    def _draw_subway_info(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime, subway_unavailable: bool = False):
         """Draw subway arrival information"""
-        if not trains:
-            self._draw_no_trains_message(draw)
+        if subway_unavailable:
+            self._draw_service_unavailable_message(draw)
+            return
+
+        next_f_trains, next_g_trains = self._select_display_trains(trains, now)
+        if not next_f_trains and not next_g_trains:
+            # Feeds are up but nothing is arriving within the display window.
+            self._draw_no_trains(draw, trains, now)
             return
 
         # Draw next F and G trains
-        self._draw_next_trains(draw, trains, now)
+        self._draw_next_trains(draw, next_f_trains, next_g_trains, now)
 
     def _get_train_display_minutes(self, train: TrainArrival, now: datetime) -> int:
         """Get countdown minutes from absolute arrival time when available."""
@@ -230,9 +240,8 @@ class LayoutManager:
             return max(0, math.floor((train.arrival_timestamp - now.timestamp()) / 60))
         return train.minutes_until_arrival
 
-    def _draw_next_trains(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime):
-        """Draw the next F and G train circles with upcoming trains to the right"""
-        # Separate and filter trains by line
+    def _select_display_trains(self, trains: List[TrainArrival], now: datetime) -> tuple[List[TrainArrival], List[TrainArrival]]:
+        """Pick the F and G trains to show: those arriving within the display window."""
         f_trains = [t for t in trains if t.route_id == config.TRAIN_LINE_1]
         g_trains = [t for t in trains if t.route_id == config.TRAIN_LINE_2]
 
@@ -245,9 +254,13 @@ class LayoutManager:
             windowed = sorted(windowed, key=lambda t: self._get_train_display_minutes(t, now))
             return windowed[:min(max_trains, len(windowed))]
 
-        next_f_trains = filter_trains(f_trains, self.subway.MAX_TRAIN_COUNT)
-        next_g_trains = filter_trains(g_trains, self.subway.MAX_G_TRAIN_COUNT)
+        return (
+            filter_trains(f_trains, self.subway.MAX_TRAIN_COUNT),
+            filter_trains(g_trains, self.subway.MAX_G_TRAIN_COUNT),
+        )
 
+    def _draw_next_trains(self, draw: ImageDraw.ImageDraw, next_f_trains: List[TrainArrival], next_g_trains: List[TrainArrival], now: datetime):
+        """Draw the F and G train circles with their upcoming arrival times."""
         # Calculate dimensions
         circle_radius = self.subway.LOGO_RADIUS
         text_area_width = self.display.MAIN_SECTION_WIDTH - (
@@ -385,23 +398,61 @@ class LayoutManager:
             anchor="mm"
         )
 
-    def _draw_no_trains_message(self, draw: ImageDraw.ImageDraw):
-        """Draw message when no trains are available"""
+    def _minutes_to_next_train(self, trains: List[TrainArrival], now: datetime) -> Optional[int]:
+        """Minutes until the soonest upcoming train across both lines, or None.
+
+        Considers all trains in the feed (not just the display window), so the
+        no-trains message can say how long the gap is even when the next train
+        is further out than the arrivals list shows. Returns None when nothing
+        is upcoming.
+        """
+        upcoming = [self._get_train_display_minutes(t, now) for t in trains]
+        upcoming = [m for m in upcoming if m >= 1]
+        return min(upcoming) if upcoming else None
+
+    def _no_trains_message(self, minutes_to_next: Optional[int]) -> str:
+        """Phrase the no-trains notice based on the gap until the next train."""
+        if minutes_to_next is None or minutes_to_next > 240:  # indefinite or > 4 hours
+            return "F & G trains are not currently running"
+        if minutes_to_next < 100:
+            return f"No trains for the next {minutes_to_next} minutes"
+        hours = (minutes_to_next + 30) // 60  # round to nearest hour
+        return f"No trains for the next {hours} hours"
+
+    def _draw_no_trains(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime):
+        """Draw the no-trains state: keep the F & G logos, with a status line
+        at the bottom of the train pane describing when trains resume.
+        """
+        radius = self.subway.LOGO_RADIUS
+        self._draw_train_line_logo(draw, config.TRAIN_LINE_1, self.display.ICON_COLUMN_X, self.subway.F_TRAIN_Y, radius)
+        self._draw_train_line_logo(draw, config.TRAIN_LINE_2, self.display.ICON_COLUMN_X, self.subway.G_TRAIN_Y, radius)
+
+        message = self._no_trains_message(self._minutes_to_next_train(trains, now))
+        center_x = self.display.MAIN_SECTION_WIDTH // 2
+        baseline_y = self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT - 30
+        draw.text((center_x, baseline_y), message, font=fonts.get('medium'), fill=0, anchor="ms")
+
+    def _draw_service_unavailable_message(self, draw: ImageDraw.ImageDraw):
+        """Draw message when the train feeds could not be reached.
+
+        Distinct from the no-trains message: this means we have no data, not
+        that there are no trains.
+        """
         draw.text(
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y),
-            "No trains",
+            "Service",
             font=fonts.get('large'),
             fill=0
         )
         draw.text(
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y + 40),
-            "currently",
+            "unavailable",
             font=fonts.get('large'),
             fill=0
         )
         draw.text(
             (self.subway.PADDING_X, self.subway.LIST_Y),
-            "No upcoming trains found",
+            "Train data feed unreachable",
             font=fonts.get('medium'),
             fill=0
         )
@@ -658,5 +709,5 @@ class LayoutManager:
 layout_manager = LayoutManager()
 
 # Provide single image creation function
-def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None) -> Image.Image:
-    return layout_manager.create_image(weather_data, subway_data, bike_data, now)
+def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None, subway_unavailable: bool = False) -> Image.Image:
+    return layout_manager.create_image(weather_data, subway_data, bike_data, now, subway_unavailable)

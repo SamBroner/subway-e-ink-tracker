@@ -5,7 +5,7 @@ import traceback
 import time
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-from services.subway_service import subway_service, TrainArrival
+from services.subway_service import subway_service, TrainArrival, SubwayResult
 from services.weather_service import weather_service
 from services.citibike_service import citibike_service, BikeAvailability
 from config.config import config
@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 class DisplayState:
     weather_data: Optional[Dict] = None
     train_data: Optional[List[TrainArrival]] = None
+    subway_unavailable: bool = False
     bike_data: Optional[BikeAvailability] = None
     last_display_update: float = 0
     last_display_clear: float = 0
@@ -57,26 +58,30 @@ class Runner:
         self.state = DisplayState()
         self.min_interval = config.timing.DISPLAY_MIN_INTERVAL_SECONDS
         self._previous_top_trains: tuple[Optional[TrainArrival], Optional[TrainArrival]] = (None, None)
+        self._previous_subway_unavailable: bool = False
 
     def handle_weather_update(self, weather_data: Dict):
         """Handle incoming weather updates"""
         self.state.weather_data = weather_data
         self._check_display_update(force=False)
     
-    def handle_train_update(self, trains: List[TrainArrival]):
+    def handle_train_update(self, result: SubwayResult):
         """Handle incoming train updates"""
         now = datetime.now()
+        trains = result.trains
         logger.info("-" * 40)
         logger.info(f"Train update at {now.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Number of trains: {len(trains)}")
-        
+        logger.info(f"Number of trains: {len(trains)} (service_unavailable={result.service_unavailable})")
+
         for train in trains:
             logger.debug(f"Train: {train.arrival_time} ({train.minutes_until_arrival} min)")
-        
+
         try:
             self.state.train_data = trains
+            self.state.subway_unavailable = result.service_unavailable
             current_top_trains = self._get_top_two_trains(trains)
-            if self._has_significant_change(current_top_trains):
+            availability_changed = result.service_unavailable != self._previous_subway_unavailable
+            if availability_changed or self._has_significant_change(current_top_trains):
                 self._check_display_update(force=True)
             else:
                 # No significant change; don't force update
@@ -168,6 +173,7 @@ class Runner:
                 weather_data=self.state.weather_data,
                 train_data=self.state.train_data or [],
                 bike_data=self.state.bike_data,
+                subway_unavailable=self.state.subway_unavailable,
                 partial=partial,
                 clear=clear
             )
@@ -178,6 +184,7 @@ class Runner:
             self.state.last_display_update = time.time()
             # Update the previous top trains after updating the display
             self._previous_top_trains = self._get_top_two_trains(self.state.train_data)
+            self._previous_subway_unavailable = self.state.subway_unavailable
         except Exception as e:
             logger.error(f"Error updating display: {str(e)}")
     

@@ -4,13 +4,13 @@ Each scenario is a (name, weather, trains, bikes) tuple built from the
 deterministic fixtures. Names double as the golden PNG filenames.
 """
 
-from typing import List, Tuple
+from typing import List
 
-from services.citibike_service import BikeAvailability
-from services.subway_service import TrainArrival
 from tests.golden import fixtures as fx
 
-Scenario = Tuple[str, dict, List[TrainArrival], BikeAvailability]
+# (name, weather, trains, bikes[, render_kwargs]) — the optional 5th element is
+# a dict of extra kwargs forwarded to getImage (e.g. {"subway_unavailable": True}).
+Scenario = tuple
 
 
 def all_scenarios() -> List[Scenario]:
@@ -22,7 +22,16 @@ def all_scenarios() -> List[Scenario]:
         ("full_typical", typical_weather, fx.make_trains([3, 9, 16], [5, 12, 24]), bikes),
 
         # --- train edge cases -------------------------------------------------
+        # Nothing upcoming at all -> indefinite "not currently running".
         ("no_trains", typical_weather, fx.make_trains([], []), bikes),
+        # Next trains exist but are beyond the display window (>40 min): the
+        # message reports the gap. <100 min -> minutes; >=100 min -> hours;
+        # >4 h -> the same "not currently running" text via the >240 branch.
+        ("no_trains_minutes", typical_weather, fx.make_trains([55], [70]), bikes),
+        ("no_trains_hours", typical_weather, fx.make_trains([130], []), bikes),
+        ("no_trains_far", typical_weather, fx.make_trains([300], []), bikes),
+        ("service_down", typical_weather, fx.make_trains([], []), bikes,
+         {"subway_unavailable": True}),
         ("no_f_only_g", typical_weather, fx.make_trains([], [4, 11, 19, 26]), bikes),
         ("no_g_only_f", typical_weather, fx.make_trains([2, 7, 13, 20], []), bikes),
         ("many_f", typical_weather, fx.make_trains([2, 5, 9, 13, 18, 25, 33], [6]), bikes),
