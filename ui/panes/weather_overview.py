@@ -15,8 +15,10 @@ from ui.panes.base import Pane
 class WeatherOverviewPane(Pane):
     """Bottom-right: enlarged current conditions, high/low, wind, precip."""
 
-    def render(self, img, draw, ctx):
-        self._draw_weather_overview(img, draw, ctx.weather, ctx.now)
+    def paint(self, surface, ctx):
+        # Pass the PaneSurface as both the image (icon paste) and draw target;
+        # it duck-types Image.paste and the ImageDraw calls the helpers use.
+        self._draw_weather_overview(surface, surface, ctx.weather, ctx.now)
 
     def _draw_weather_overview(self, img: Image.Image, draw: ImageDraw.ImageDraw, weather_data: dict, now: datetime):
         """Render the enlarged current-weather card on the lower-right."""
