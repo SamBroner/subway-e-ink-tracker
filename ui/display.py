@@ -207,11 +207,11 @@ class Display:
                 logger.error(f"Error processing update queue: {str(e)}")
                 logger.error(traceback.format_exc())
 
-    def update(self, weather_data: Dict, train_data: List[TrainArrival], bike_data: BikeAvailability = None, partial: bool = False, clear: bool = False):
+    def update(self, weather_data: Dict, train_data: List[TrainArrival], bike_data: BikeAvailability = None, subway_unavailable: bool = False, partial: bool = False, clear: bool = False):
         """Queue an update for the display with new data"""
         try:
             logger.info("Generating display image...")
-            img = getImage(weather_data, train_data, bike_data)
+            img = getImage(weather_data, train_data, bike_data, subway_unavailable=subway_unavailable)
             self.next_frame = (img, partial, clear)
                 
         except Exception as e:

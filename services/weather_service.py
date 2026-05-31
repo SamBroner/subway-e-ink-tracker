@@ -3,12 +3,158 @@ from typing import Dict, Callable, List
 import threading
 import time
 import requests
-from config.config import config
 from datetime import datetime, timedelta
-import pytz
+
+import clock
+from config.config import config
 from services.weather_codes import RAIN_WMO_CODES, SNOW_WMO_CODES
 
 logger = logging.getLogger(__name__)
+
+# Mapping of WMO weather codes to WeatherAPI condition codes
+_WMO_TO_CONDITION_CODE = {
+    0: 1000,   # Clear sky
+    1: 1003,   # Mainly clear
+    2: 1003,   # Partly cloudy
+    3: 1006,   # Overcast
+    45: 1135,  # Foggy
+    48: 1147,  # Depositing rime fog
+    51: 1150,  # Light drizzle
+    53: 1153,  # Moderate drizzle
+    55: 1153,  # Dense drizzle
+    61: 1180,  # Slight rain
+    63: 1183,  # Moderate rain
+    65: 1186,  # Heavy rain
+    71: 1210,  # Slight snow
+    73: 1213,  # Moderate snow
+    75: 1216,  # Heavy snow
+    77: 1255,  # Snow grains
+    80: 1240,  # Slight rain showers
+    81: 1243,  # Moderate rain showers
+    82: 1246,  # Violent rain showers
+    85: 1255,  # Slight snow showers
+    86: 1258,  # Heavy snow showers
+    95: 1273,  # Thunderstorm
+    96: 1276,  # Thunderstorm with slight hail
+    99: 1279,  # Thunderstorm with heavy hail
+}
+
+_WMO_TO_CONDITION_TEXT = {
+    0: "Clear",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Foggy",
+    48: "Rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    61: "Light rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Light snow",
+    73: "Moderate snow",
+    75: "Heavy snow",
+    77: "Snow grains",
+    80: "Light rain showers",
+    81: "Moderate rain showers",
+    82: "Violent rain showers",
+    85: "Light snow showers",
+    86: "Heavy snow showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm with hail",
+    99: "Thunderstorm with heavy hail",
+}
+
+
+def map_condition_code(wmo_code: int) -> int:
+    """Map a WMO weather code to a WeatherAPI condition code."""
+    return _WMO_TO_CONDITION_CODE.get(wmo_code, 1000)  # Default to clear sky
+
+
+def condition_text(wmo_code: int) -> str:
+    """Convert a WMO weather code to readable condition text."""
+    return _WMO_TO_CONDITION_TEXT.get(wmo_code, "Clear")
+
+
+def split_precipitation_chances(
+    precip_probability: float | int,
+    weather_code: int,
+    rain_mm: float | int,
+    snowfall_cm: float | int
+) -> tuple[int, int]:
+    """Split a generic precip probability into (rain, snow) channels for the UI."""
+    precip_probability = int(max(0, min(100, round(float(precip_probability)))))
+    rain_mm = float(rain_mm)
+    snowfall_cm = float(snowfall_cm)
+
+    has_rain_signal = rain_mm > 0
+    has_snow_signal = snowfall_cm > 0
+
+    # Model output can include probability without a non-zero hourly amount due
+    # to rounding; fall back to inferring the type from the weather code.
+    if not has_rain_signal and not has_snow_signal:
+        has_snow_signal = weather_code in SNOW_WMO_CODES
+        has_rain_signal = weather_code in RAIN_WMO_CODES
+
+    if has_rain_signal and has_snow_signal:
+        return precip_probability, precip_probability
+    if has_snow_signal:
+        return 0, precip_probability
+    if has_rain_signal:
+        return precip_probability, 0
+    return 0, 0
+
+
+def build_next_hours_forecast(weather_data: Dict, now: datetime, hours: int = 12) -> List[dict]:
+    """Build the next ``hours`` of hourly forecast rows from a weather payload.
+
+    Pure function of (weather_data, now): the hourly slice starts at ``now.hour``
+    into the payload's hourly arrays. Returns [] if the payload lacks hourly data.
+    """
+    hourly = weather_data.get('hourly') if weather_data else None
+    if not hourly:
+        return []
+
+    times = hourly.get('time', [])
+    rain_series = hourly.get('rain', [])
+    snowfall_series = hourly.get('snowfall', [])
+
+    current_hour = now.hour
+    result: List[dict] = []
+    for i in range(current_hour, current_hour + hours):
+        if i >= len(times):
+            break
+
+        weather_code = hourly['weathercode'][i]
+        precip_probability = hourly['precipitation_probability'][i]
+        rain_mm = rain_series[i] if i < len(rain_series) else 0
+        snowfall_cm = snowfall_series[i] if i < len(snowfall_series) else 0
+        chance_of_rain, chance_of_snow = split_precipitation_chances(
+            precip_probability=precip_probability,
+            weather_code=weather_code,
+            rain_mm=rain_mm,
+            snowfall_cm=snowfall_cm
+        )
+
+        result.append({
+            'time': times[i],
+            'temp_f': hourly['temperature_2m'][i],
+            'chance_of_precipitation': precip_probability,
+            'chance_of_rain': chance_of_rain,
+            'chance_of_snow': chance_of_snow,
+            'rain_mm': rain_mm,
+            'snowfall_cm': snowfall_cm,
+            'wind_mph': hourly['windspeed_10m'][i],
+            'condition': {
+                'text': condition_text(weather_code),
+                'code': map_condition_code(weather_code)
+            },
+            'is_day': hourly['is_day'][i]
+        })
+
+    return result
+
 
 class WeatherService:
     def __init__(self):
@@ -76,7 +222,7 @@ class WeatherService:
     def _get_commute_forecasts(self, weather_data: Dict) -> List[Dict]:
         """Extract weather forecasts for commute periods"""
         forecasts = []
-        ny_tz = pytz.timezone('America/New_York')
+        ny_tz = clock.NY_TZ
         now = datetime.now(ny_tz)
         
         logger.debug("Starting commute forecast generation")
@@ -146,64 +292,11 @@ class WeatherService:
 
     def _map_condition_code(self, wmo_code: int) -> int:
         """Map WMO weather codes to WeatherAPI condition codes"""
-        # Mapping of WMO codes to WeatherAPI codes
-        code_map = {
-            0: 1000,  # Clear sky
-            1: 1003,  # Mainly clear
-            2: 1003,  # Partly cloudy
-            3: 1006,  # Overcast
-            45: 1135,  # Foggy
-            48: 1147,  # Depositing rime fog
-            51: 1150,  # Light drizzle
-            53: 1153,  # Moderate drizzle
-            55: 1153,  # Dense drizzle
-            61: 1180,  # Slight rain
-            63: 1183,  # Moderate rain
-            65: 1186,  # Heavy rain
-            71: 1210,  # Slight snow
-            73: 1213,  # Moderate snow
-            75: 1216,  # Heavy snow
-            77: 1255,  # Snow grains
-            80: 1240,  # Slight rain showers
-            81: 1243,  # Moderate rain showers
-            82: 1246,  # Violent rain showers
-            85: 1255,  # Slight snow showers
-            86: 1258,  # Heavy snow showers
-            95: 1273,  # Thunderstorm
-            96: 1276,  # Thunderstorm with slight hail
-            99: 1279   # Thunderstorm with heavy hail
-        }
-        return code_map.get(wmo_code, 1000)  # Default to clear sky if code not found
+        return map_condition_code(wmo_code)
 
     def _get_condition_text(self, wmo_code: int) -> str:
         """Convert WMO weather code to readable condition text"""
-        conditions = {
-            0: "Clear",
-            1: "Mainly clear",
-            2: "Partly cloudy",
-            3: "Overcast",
-            45: "Foggy",
-            48: "Rime fog",
-            51: "Light drizzle",
-            53: "Moderate drizzle",
-            55: "Dense drizzle",
-            61: "Light rain",
-            63: "Moderate rain",
-            65: "Heavy rain",
-            71: "Light snow",
-            73: "Moderate snow",
-            75: "Heavy snow",
-            77: "Snow grains",
-            80: "Light rain showers",
-            81: "Moderate rain showers",
-            82: "Violent rain showers",
-            85: "Light snow showers",
-            86: "Heavy snow showers",
-            95: "Thunderstorm",
-            96: "Thunderstorm with hail",
-            99: "Thunderstorm with heavy hail"
-        }
-        return conditions.get(wmo_code, "Clear")
+        return condition_text(wmo_code)
 
     def _split_precipitation_chances(
         self,
@@ -213,25 +306,9 @@ class WeatherService:
         snowfall_cm: float | int
     ) -> tuple[int, int]:
         """Split generic precip probability into rain/snow channels for UI rendering."""
-        precip_probability = int(max(0, min(100, round(float(precip_probability)))))
-        rain_mm = float(rain_mm)
-        snowfall_cm = float(snowfall_cm)
-
-        has_rain_signal = rain_mm > 0
-        has_snow_signal = snowfall_cm > 0
-
-        # Model output can include probability without non-zero hourly amount due to rounding.
-        if not has_rain_signal and not has_snow_signal:
-            has_snow_signal = weather_code in SNOW_WMO_CODES
-            has_rain_signal = weather_code in RAIN_WMO_CODES
-
-        if has_rain_signal and has_snow_signal:
-            return precip_probability, precip_probability
-        if has_snow_signal:
-            return 0, precip_probability
-        if has_rain_signal:
-            return precip_probability, 0
-        return 0, 0
+        return split_precipitation_chances(
+            precip_probability, weather_code, rain_mm, snowfall_cm
+        )
 
     def get_weather(self) -> Dict:
         """Fetch current weather data and add commute forecasts"""
@@ -260,7 +337,7 @@ class WeatherService:
                     "temperature_2m_min",
                     "precipitation_probability_max"
                 ],
-                "timezone": "America/New_York",
+                "timezone": clock.TZ_NAME,
                 "temperature_unit": "fahrenheit",
                 "windspeed_unit": "mph",
                 "forecast_days": 3
@@ -293,7 +370,7 @@ class WeatherService:
         """Extract current conditions from Open-Meteo data"""
         try:
             # Find the index for the current hour
-            ny_tz = pytz.timezone('America/New_York')
+            ny_tz = clock.NY_TZ
             now = datetime.now(ny_tz)
             current_time = now.strftime('%Y-%m-%dT%H:00')
             
@@ -404,52 +481,6 @@ class WeatherService:
             })
         return hourly_data
 
-    def get_next_hours_forecast(self, hours: int = 12) -> List[dict]:
-        """Get the next X hours of forecast data"""
-        if not self._current_data or 'hourly' not in self._current_data:
-            logger.warning("No current weather data available for hourly forecast")
-            return []
-        
-        ny_tz = pytz.timezone('America/New_York')
-        now = datetime.now(ny_tz)
-        current_hour = now.hour
-        
-        hourly_data = []
-        for i in range(current_hour, current_hour + hours):
-            if i >= len(self._current_data['hourly']['time']):
-                break
-
-            weather_code = self._current_data['hourly']['weathercode'][i]
-            precip_probability = self._current_data['hourly']['precipitation_probability'][i]
-            rain_series = self._current_data['hourly'].get('rain', [])
-            snowfall_series = self._current_data['hourly'].get('snowfall', [])
-            rain_mm = rain_series[i] if i < len(rain_series) else 0
-            snowfall_cm = snowfall_series[i] if i < len(snowfall_series) else 0
-            chance_of_rain, chance_of_snow = self._split_precipitation_chances(
-                precip_probability=precip_probability,
-                weather_code=weather_code,
-                rain_mm=rain_mm,
-                snowfall_cm=snowfall_cm
-            )
-
-            hourly_data.append({
-                'time': self._current_data['hourly']['time'][i],
-                'temp_f': self._current_data['hourly']['temperature_2m'][i],
-                'chance_of_precipitation': precip_probability,
-                'chance_of_rain': chance_of_rain,
-                'chance_of_snow': chance_of_snow,
-                'rain_mm': rain_mm,
-                'snowfall_cm': snowfall_cm,
-                'wind_mph': self._current_data['hourly']['windspeed_10m'][i],
-                'condition': {
-                    'text': self._get_condition_text(weather_code),
-                    'code': self._map_condition_code(weather_code)
-                },
-                'is_day': self._current_data['hourly']['is_day'][i]
-            })
-        
-        return hourly_data
-
     def get_next_commutes(self, include_today: bool = True) -> List[Dict]:
         """Get the next commute period forecasts"""
         if not self._current_data:
@@ -462,7 +493,7 @@ class WeatherService:
                 forecasts = self._current_data['commute_forecasts']
                 if not include_today:
                     # Filter out today's forecasts if not requested
-                    today = datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d')
+                    today = datetime.now(clock.NY_TZ).strftime('%Y-%m-%d')
                     forecasts = [f for f in forecasts if f['date'] != today]
                 return forecasts
             
