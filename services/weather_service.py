@@ -4,7 +4,6 @@ import threading
 import time
 import requests
 from datetime import datetime, timedelta
-import pytz
 
 import clock
 from config.config import config
@@ -223,7 +222,7 @@ class WeatherService:
     def _get_commute_forecasts(self, weather_data: Dict) -> List[Dict]:
         """Extract weather forecasts for commute periods"""
         forecasts = []
-        ny_tz = pytz.timezone('America/New_York')
+        ny_tz = clock.NY_TZ
         now = datetime.now(ny_tz)
         
         logger.debug("Starting commute forecast generation")
@@ -338,7 +337,7 @@ class WeatherService:
                     "temperature_2m_min",
                     "precipitation_probability_max"
                 ],
-                "timezone": "America/New_York",
+                "timezone": clock.TZ_NAME,
                 "temperature_unit": "fahrenheit",
                 "windspeed_unit": "mph",
                 "forecast_days": 3
@@ -371,7 +370,7 @@ class WeatherService:
         """Extract current conditions from Open-Meteo data"""
         try:
             # Find the index for the current hour
-            ny_tz = pytz.timezone('America/New_York')
+            ny_tz = clock.NY_TZ
             now = datetime.now(ny_tz)
             current_time = now.strftime('%Y-%m-%dT%H:00')
             
@@ -482,13 +481,6 @@ class WeatherService:
             })
         return hourly_data
 
-    def get_next_hours_forecast(self, hours: int = 12) -> List[dict]:
-        """Get the next X hours of forecast data from the cached weather payload."""
-        if not self._current_data or 'hourly' not in self._current_data:
-            logger.warning("No current weather data available for hourly forecast")
-            return []
-        return build_next_hours_forecast(self._current_data, clock.now(), hours)
-
     def get_next_commutes(self, include_today: bool = True) -> List[Dict]:
         """Get the next commute period forecasts"""
         if not self._current_data:
@@ -501,7 +493,7 @@ class WeatherService:
                 forecasts = self._current_data['commute_forecasts']
                 if not include_today:
                     # Filter out today's forecasts if not requested
-                    today = datetime.now(pytz.timezone('America/New_York')).strftime('%Y-%m-%d')
+                    today = datetime.now(clock.NY_TZ).strftime('%Y-%m-%d')
                     forecasts = [f for f in forecasts if f['date'] != today]
                 return forecasts
             

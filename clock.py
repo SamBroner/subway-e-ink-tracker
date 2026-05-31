@@ -12,7 +12,10 @@ subway_service) should not be switched to this without reconciling tz-awareness.
 from datetime import datetime
 import pytz
 
-NY_TZ = pytz.timezone("America/New_York")
+# Single source of truth for the app's timezone. TZ_NAME is also the string the
+# Open-Meteo API expects in its `timezone` parameter.
+TZ_NAME = "America/New_York"
+NY_TZ = pytz.timezone(TZ_NAME)
 
 
 def now() -> datetime:
