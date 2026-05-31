@@ -88,7 +88,7 @@ class Pane:
         self.subway = config.subway
         self.time = config.time
 
-    def render(self, img: Image.Image, draw: ImageDraw.ImageDraw, ctx: RenderContext) -> None:
+    def render(self, img: Image.Image, ctx: RenderContext) -> None:
         tile = Image.new('L', (self.w, self.h), 255)
         surface = PaneSurface(tile, (self.x, self.y))
         self.paint(surface, ctx)

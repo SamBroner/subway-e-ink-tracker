@@ -4,36 +4,32 @@ from datetime import datetime
 from typing import List, Optional
 import math
 
-from PIL import ImageDraw
-
 from config.config import config
 from ui.fonts import fonts
 from services.subway_service import TrainArrival
-from ui.panes.base import Pane
+from ui.panes.base import Pane, PaneSurface, RenderContext
 
 
 class SubwayPane(Pane):
     """Train section: F/G arrivals, no-trains notice, or service-unavailable."""
 
-    def paint(self, surface, ctx):
-        # PaneSurface duck-types the ImageDraw calls the helpers use
-        # (text/ellipse/textbbox), so it is passed straight through as `draw`.
+    def paint(self, surface: PaneSurface, ctx: RenderContext):
         self._draw_subway_info(surface, ctx.trains, ctx.now, ctx.subway_unavailable)
 
-    def _draw_subway_info(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime, subway_unavailable: bool = False):
+    def _draw_subway_info(self, surface: PaneSurface, trains: List[TrainArrival], now: datetime, subway_unavailable: bool = False):
         """Draw subway arrival information"""
         if subway_unavailable:
-            self._draw_service_unavailable_message(draw)
+            self._draw_service_unavailable_message(surface)
             return
 
         next_f_trains, next_g_trains = self._select_display_trains(trains, now)
         if not next_f_trains and not next_g_trains:
             # Feeds are up but nothing is arriving within the display window.
-            self._draw_no_trains(draw, trains, now)
+            self._draw_no_trains(surface, trains, now)
             return
 
         # Draw next F and G trains
-        self._draw_next_trains(draw, next_f_trains, next_g_trains, now)
+        self._draw_next_trains(surface, next_f_trains, next_g_trains, now)
 
     def _get_train_display_minutes(self, train: TrainArrival, now: datetime) -> int:
         """Get countdown minutes from absolute arrival time when available."""
@@ -60,7 +56,7 @@ class SubwayPane(Pane):
             filter_trains(g_trains, self.subway.MAX_G_TRAIN_COUNT),
         )
 
-    def _draw_next_trains(self, draw: ImageDraw.ImageDraw, next_f_trains: List[TrainArrival], next_g_trains: List[TrainArrival], now: datetime):
+    def _draw_next_trains(self, surface: PaneSurface, next_f_trains: List[TrainArrival], next_g_trains: List[TrainArrival], now: datetime):
         """Draw the F and G train circles with their upcoming arrival times."""
         # Calculate dimensions
         circle_radius = self.subway.LOGO_RADIUS
@@ -70,7 +66,7 @@ class SubwayPane(Pane):
 
         # Draw each train line section
         self._draw_train_line_section(
-            draw=draw,
+            surface=surface,
             trains=next_f_trains,
             route_id=config.TRAIN_LINE_1,
             logo_center_y=self.subway.F_TRAIN_Y,
@@ -80,7 +76,7 @@ class SubwayPane(Pane):
         )
 
         self._draw_train_line_section(
-            draw=draw,
+            surface=surface,
             trains=next_g_trains,
             route_id=config.TRAIN_LINE_2,
             logo_center_y=self.subway.G_TRAIN_Y,
@@ -89,13 +85,13 @@ class SubwayPane(Pane):
             now=now
         )
 
-    def _draw_train_line_section(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival],
+    def _draw_train_line_section(self, surface: PaneSurface, trains: List[TrainArrival],
                                 route_id: str, logo_center_y: int,
                                 circle_radius: int, text_area_width: int, now: datetime):
         """Draw a complete train line section with logo and arrival times"""
         # Draw the train line logo using the configured column position
         self._draw_train_line_logo(
-            draw=draw,
+            surface=surface,
             line_letter=route_id,
             x=self.display.ICON_COLUMN_X,  # Use configured position
             y=logo_center_y,
@@ -114,7 +110,7 @@ class SubwayPane(Pane):
         for i, train in enumerate(trains):
             y = text_base_y + (i * (line_height + self.subway.LINE_SPACING)) - line_height
             self._draw_train_arrival_time(
-                draw=draw,
+                surface=surface,
                 train=train,
                 x=text_start_x,
                 y=y,
@@ -122,7 +118,7 @@ class SubwayPane(Pane):
                 now=now
             )
 
-    def _draw_train_arrival_time(self, draw: ImageDraw.ImageDraw, train: TrainArrival,
+    def _draw_train_arrival_time(self, surface: PaneSurface, train: TrainArrival,
                                 x: int, y: int, max_width: int, now: datetime):
         """Draw a train arrival time with minutes, 'min', and arrival time"""
         time_font = fonts.get('xheader')
@@ -136,7 +132,7 @@ class SubwayPane(Pane):
 
         # Calculate all text widths
         min_text = "min"
-        min_bbox = draw.textbbox((0, 0), min_text, font=small_font)
+        min_bbox = surface.textbbox((0, 0), min_text, font=small_font)
         min_width = min_bbox[2] - min_bbox[0]
 
         minutes_width = time_font.getlength(str(display_minutes))
@@ -148,7 +144,7 @@ class SubwayPane(Pane):
         start_x = x + max_width - total_width
 
         # Draw minutes until arrival
-        draw.text(
+        surface.text(
             (start_x, y),
             str(display_minutes),
             font=time_font,
@@ -157,7 +153,7 @@ class SubwayPane(Pane):
         )
 
         # Draw "min"
-        draw.text(
+        surface.text(
             (start_x + minutes_width + 5, y),
             min_text,
             font=small_font,
@@ -167,7 +163,7 @@ class SubwayPane(Pane):
 
         # Draw arrival time
         time_x = start_x + minutes_width + min_width + 20
-        draw.text(
+        surface.text(
             (time_x, y),
             hour_str,
             font=time_font,
@@ -176,7 +172,7 @@ class SubwayPane(Pane):
         )
 
         # Draw am/pm
-        draw.text(
+        surface.text(
             (time_x + hour_width, y),
             ampm_str,
             font=small_font,
@@ -184,14 +180,14 @@ class SubwayPane(Pane):
             anchor="ls"
         )
 
-    def _draw_train_line_logo(self, draw: ImageDraw.ImageDraw, line_letter: str,
+    def _draw_train_line_logo(self, surface: PaneSurface, line_letter: str,
                              x: int, y: int, radius: int):
         """Draw a subway train line logo"""
-        draw.ellipse(
+        surface.ellipse(
             (x - radius, y - radius, x + radius, y + radius),
             fill=0  # Black circle
         )
-        draw.text(
+        surface.text(
             (x, y),
             line_letter,
             font=fonts.get('xheader'),
@@ -220,38 +216,38 @@ class SubwayPane(Pane):
         hours = (minutes_to_next + 30) // 60  # round to nearest hour
         return f"No trains for the next {hours} hours"
 
-    def _draw_no_trains(self, draw: ImageDraw.ImageDraw, trains: List[TrainArrival], now: datetime):
+    def _draw_no_trains(self, surface: PaneSurface, trains: List[TrainArrival], now: datetime):
         """Draw the no-trains state: keep the F & G logos, with a status line
         at the bottom of the train pane describing when trains resume.
         """
         radius = self.subway.LOGO_RADIUS
-        self._draw_train_line_logo(draw, config.TRAIN_LINE_1, self.display.ICON_COLUMN_X, self.subway.F_TRAIN_Y, radius)
-        self._draw_train_line_logo(draw, config.TRAIN_LINE_2, self.display.ICON_COLUMN_X, self.subway.G_TRAIN_Y, radius)
+        self._draw_train_line_logo(surface, config.TRAIN_LINE_1, self.display.ICON_COLUMN_X, self.subway.F_TRAIN_Y, radius)
+        self._draw_train_line_logo(surface, config.TRAIN_LINE_2, self.display.ICON_COLUMN_X, self.subway.G_TRAIN_Y, radius)
 
         message = self._no_trains_message(self._minutes_to_next_train(trains, now))
         center_x = self.display.MAIN_SECTION_WIDTH // 2
         baseline_y = self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT - 30
-        draw.text((center_x, baseline_y), message, font=fonts.get('medium'), fill=0, anchor="ms")
+        surface.text((center_x, baseline_y), message, font=fonts.get('medium'), fill=0, anchor="ms")
 
-    def _draw_service_unavailable_message(self, draw: ImageDraw.ImageDraw):
+    def _draw_service_unavailable_message(self, surface: PaneSurface):
         """Draw message when the train feeds could not be reached.
 
         Distinct from the no-trains message: this means we have no data, not
         that there are no trains.
         """
-        draw.text(
+        surface.text(
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y),
             "Service",
             font=fonts.get('large'),
             fill=0
         )
-        draw.text(
+        surface.text(
             (self.subway.PADDING_X, self.subway.NEXT_TRAIN_Y + 40),
             "unavailable",
             font=fonts.get('large'),
             fill=0
         )
-        draw.text(
+        surface.text(
             (self.subway.PADDING_X, self.subway.LIST_Y),
             "Train data feed unreachable",
             font=fonts.get('medium'),

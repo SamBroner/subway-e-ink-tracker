@@ -3,13 +3,13 @@
 from datetime import datetime
 
 from ui.fonts import fonts
-from ui.panes.base import Pane, PaneSurface
+from ui.panes.base import Pane, PaneSurface, RenderContext
 
 
 class DatePane(Pane):
     """Header: date and current time."""
 
-    def paint(self, surface: PaneSurface, ctx):
+    def paint(self, surface: PaneSurface, ctx: RenderContext):
         self._draw_time(surface, ctx.now)
 
     def _draw_time(self, surface: PaneSurface, now: datetime):

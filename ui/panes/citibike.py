@@ -3,13 +3,13 @@
 from ui.fonts import fonts
 import utils
 from services.citibike_service import BikeAvailability
-from ui.panes.base import Pane, PaneSurface
+from ui.panes.base import Pane, PaneSurface, RenderContext
 
 
 class CitibikePane(Pane):
     """Bottom-left: classic and e-bike counts."""
 
-    def paint(self, surface: PaneSurface, ctx):
+    def paint(self, surface: PaneSurface, ctx: RenderContext):
         self._draw_bike_panel(surface, ctx.bikes)
 
     def _draw_bike_panel(self, surface: PaneSurface, bike_data: BikeAvailability | None):

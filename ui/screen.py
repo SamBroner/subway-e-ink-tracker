@@ -27,7 +27,7 @@ class Screen:
         # so chrome must be drawn last or the dividers at pane boundaries would
         # be overwritten.
         for pane in self.panes:
-            pane.render(img, draw, ctx)
+            pane.render(img, ctx)
         self._draw_chrome(draw)
 
         return img.rotate(180)

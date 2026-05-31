@@ -3,24 +3,20 @@
 from datetime import datetime, time
 from typing import Optional
 
-from PIL import Image, ImageDraw
-
 import clock
 from ui.fonts import fonts
 import utils
 from services.weather_codes import RAIN_WMO_CODES, SNOW_WMO_CODES
-from ui.panes.base import Pane
+from ui.panes.base import Pane, PaneSurface, RenderContext
 
 
 class WeatherOverviewPane(Pane):
     """Bottom-right: enlarged current conditions, high/low, wind, precip."""
 
-    def paint(self, surface, ctx):
-        # Pass the PaneSurface as both the image (icon paste) and draw target;
-        # it duck-types Image.paste and the ImageDraw calls the helpers use.
-        self._draw_weather_overview(surface, surface, ctx.weather, ctx.now)
+    def paint(self, surface: PaneSurface, ctx: RenderContext):
+        self._draw_weather_overview(surface, ctx.weather, ctx.now)
 
-    def _draw_weather_overview(self, img: Image.Image, draw: ImageDraw.ImageDraw, weather_data: dict, now: datetime):
+    def _draw_weather_overview(self, surface: PaneSurface, weather_data: dict, now: datetime):
         """Render the enlarged current-weather card on the lower-right."""
         day_summary = None
         forecast_days = weather_data.get("forecast", {}).get("forecastday", [])
@@ -28,8 +24,7 @@ class WeatherOverviewPane(Pane):
             day_summary = forecast_days[0].get("day")
         rest_of_day_precip, rest_of_day_precip_label = self._get_rest_of_day_precip_summary(weather_data, now)
         self._draw_current_weather_large(
-            img,
-            draw,
+            surface,
             weather_data["current"],
             day_summary,
             rest_of_day_precip,
@@ -126,8 +121,7 @@ class WeatherOverviewPane(Pane):
 
     def _draw_current_weather_large(
         self,
-        img: Image.Image,
-        draw: ImageDraw.ImageDraw,
+        surface: PaneSurface,
         current_weather: dict,
         day_summary: Optional[dict] = None,
         rest_of_day_precip: Optional[int] = None,
@@ -137,7 +131,7 @@ class WeatherOverviewPane(Pane):
         x = self.weather.CURRENT_SECTION_X + 10
         y = self.display.TRAIN_SECTION_Y + self.display.TRAIN_SECTION_HEIGHT + 30
         icon = utils.getWeatherIcon(current_weather, self.weather.CURRENT_ICON_SIZE)
-        img.paste(icon, (x, y-15), icon)
+        surface.paste(icon, (x, y-15), icon)
 
         temp_font = fonts.get('xheader')
         detail_font = fonts.get('large')
@@ -148,7 +142,7 @@ class WeatherOverviewPane(Pane):
         temp_text = f"{round(current_weather.get('temp_f', 0))}°"
         condition_text = current_weather.get('condition', {}).get('text', '')
         cond_x = x + (self.weather.CURRENT_ICON_SIZE // 2)
-        draw.text((cond_x, y + self.weather.CURRENT_ICON_SIZE - 30), condition_text, font=detail_font, fill=0, anchor="mt")
+        surface.text((cond_x, y + self.weather.CURRENT_ICON_SIZE - 30), condition_text, font=detail_font, fill=0, anchor="mt")
 
         right_x = text_x + 150
         right_y = y
@@ -162,15 +156,15 @@ class WeatherOverviewPane(Pane):
             max_temp = day_summary.get('maxtemp_f')
             min_temp = day_summary.get('mintemp_f')
             if max_temp is not None:
-                draw.text((right_x, right_y - 5), "High", font=small_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y - 5), "High", font=small_font, fill=0, anchor="ls")
                 right_y += small_font.size + 4
-                draw.text((right_x, right_y + 40), f"{round(max_temp)}°", font=temp_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y + 40), f"{round(max_temp)}°", font=temp_font, fill=0, anchor="ls")
                 high_center = right_y + temp_font.size / 2
                 right_y += temp_font.size + 12
             if min_temp is not None:
-                draw.text((right_x, right_y - 5), "Low", font=small_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y - 5), "Low", font=small_font, fill=0, anchor="ls")
                 right_y += small_font.size + 4
-                draw.text((right_x, right_y + 40), f"{round(min_temp)}°", font=temp_font, fill=0, anchor="ls")
+                surface.text((right_x, right_y + 40), f"{round(min_temp)}°", font=temp_font, fill=0, anchor="ls")
                 low_center = right_y + temp_font.size / 2
                 right_y += temp_font.size + 12
             summary_precip = day_summary.get('daily_chance_of_rain')
@@ -184,13 +178,13 @@ class WeatherOverviewPane(Pane):
 
         if daily_rain_value is not None:
             daily_rain_label_y = right_y - 16
-            draw.text((right_x, daily_rain_label_y), daily_rain_label_text, font=small_font, fill=0, anchor="ls")
+            surface.text((right_x, daily_rain_label_y), daily_rain_label_text, font=small_font, fill=0, anchor="ls")
             right_y += small_font.size + 4
             daily_rain_value_y = right_y - 5
             daily_rain_value_text = f"{int(daily_rain_value)}"
-            draw.text((right_x, daily_rain_value_y), daily_rain_value_text, font=fonts.get('large'), fill=0, anchor="ls")
-            value_width = draw.textlength(daily_rain_value_text, font=fonts.get('large'))
-            draw.text(
+            surface.text((right_x, daily_rain_value_y), daily_rain_value_text, font=fonts.get('large'), fill=0, anchor="ls")
+            value_width = surface.textlength(daily_rain_value_text, font=fonts.get('large'))
+            surface.text(
                 (right_x + value_width + unit_spacing, daily_rain_value_y),
                 "%",
                 font=unit_font,
@@ -207,7 +201,7 @@ class WeatherOverviewPane(Pane):
             target_center = y + self.weather.CURRENT_ICON_SIZE / 2
 
         temp_y = target_center - temp_font.size / 2 + 25
-        draw.text((text_x - 15, temp_y), temp_text, font=temp_font, fill=0, anchor="ls")
+        surface.text((text_x - 15, temp_y), temp_text, font=temp_font, fill=0, anchor="ls")
 
         left_y = temp_y + temp_font.size + 12
 
@@ -225,12 +219,12 @@ class WeatherOverviewPane(Pane):
                               forced_value_y: float | None = None,
                               unit_text: str = "") -> float:
             value_y = forced_value_y if forced_value_y is not None else label_y + right_label_font.size + detail_value_gap
-            draw.text((detail_x, label_y), label, font=right_label_font, fill=0, anchor="ls")
-            draw.text((detail_x, value_y), value_text, font=large_font, fill=0, anchor="ls")
+            surface.text((detail_x, label_y), label, font=right_label_font, fill=0, anchor="ls")
+            surface.text((detail_x, value_y), value_text, font=large_font, fill=0, anchor="ls")
             cursor = value_y + large_font.size + detail_spacing
             if unit_text:
-                value_width = draw.textlength(value_text, font=large_font)
-                draw.text(
+                value_width = surface.textlength(value_text, font=large_font)
+                surface.text(
                     (detail_x + value_width + unit_spacing, value_y),
                     unit_text,
                     font=unit_font,
