@@ -209,7 +209,7 @@ class WeatherOverviewPane(Pane):
         large_font = fonts.get('large')
         detail_x = text_x - 20
 
-        detail_value_gap = 14  # Keeps same visual gap as previous manual layout
+        detail_value_gap = 14  # Vertical gap between a detail's label and its value
         detail_spacing = 8
         detail_label_offset = 45  # Label sits this many pixels above the working cursor
         unit_spacing = 6

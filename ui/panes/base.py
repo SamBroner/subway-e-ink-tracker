@@ -1,13 +1,11 @@
 """Base types for panes: the render context, a per-pane drawing surface, and
 the Pane base class.
 
-Approach A — relative rects via tiles. Each pane renders into its own `w×h`
-tile through a `PaneSurface` whose coordinate origin is the pane's top-left.
-Callers still pass coordinates in global (screen) space; the surface translates
-by `-origin` and clips to the tile, then `Screen` pastes the tile at the pane's
-rect. This makes the rect load-bearing (a pane physically cannot draw outside
-it) and keeps composition a single cheap paste — without rebasing every
-coordinate by hand.
+Each pane renders into its own `w×h` tile through a `PaneSurface` whose
+coordinate origin is the pane's top-left. Panes pass coordinates in global
+(screen) space; the surface translates them by `-origin` and clips to the tile,
+and `Screen` pastes the tile at the pane's rect. The clip makes the rect
+authoritative: a pane cannot draw outside its own region.
 """
 
 from dataclasses import dataclass
@@ -36,8 +34,8 @@ class PaneSurface:
 
     Mirrors the bits of PIL's ImageDraw / Image that panes use, translating
     global coordinates into tile-local ones. Drawing outside the tile is clipped
-    by PIL, which is the point: content is positioned exactly as before but can
-    no longer bleed past the pane's rect.
+    by PIL — which is the point: content positioned by global coordinates cannot
+    bleed past the pane's rect.
     """
 
     def __init__(self, tile: Image.Image, origin: tuple[int, int]):
@@ -74,10 +72,10 @@ class PaneSurface:
 class Pane:
     """A rectangular region of the screen that renders itself into a tile.
 
-    The base carries the same config shortcuts the old LayoutManager exposed
-    (self.display / weather / subway / time) so each pane's drawing code reads
-    naturally. Subclasses implement ``paint``; the default ``render`` builds the
-    tile, hands the pane a translating ``PaneSurface``, and pastes the result.
+    The base exposes config shortcuts (self.display / weather / subway / time)
+    so each pane's drawing code reads naturally. Subclasses implement ``paint``;
+    the default ``render`` builds the tile, hands the pane a translating
+    ``PaneSurface``, and pastes the result onto the frame.
     """
 
     def __init__(self, rect: tuple[int, int, int, int]):

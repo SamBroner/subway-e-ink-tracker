@@ -1,9 +1,8 @@
 """A screen: the ordered set of panes that fill the display.
 
-`Screen.render` builds the blank frame, draws the chrome (the section dividers
-that span panes), renders each pane, and applies the 180° rotation for the
-panel's physical orientation — i.e. it replaces the body of the old
-`LayoutManager.create_image`.
+`Screen.render` builds the blank frame, renders each pane into it, draws the
+chrome (the section dividers that span panes) on top, and applies the 180°
+rotation for the panel's physical orientation.
 """
 
 from typing import List
@@ -23,9 +22,9 @@ class Screen:
         img = Image.new('L', (d.WIDTH, d.HEIGHT), 255)
         draw = ImageDraw.Draw(img)
 
-        # Panes first, then chrome on top. Panes paste opaque tiles (Approach A),
-        # so chrome must be drawn last or the dividers at pane boundaries would
-        # be overwritten.
+        # Panes first, then chrome on top: panes paste opaque tiles, so the
+        # chrome must be drawn last or the dividers at pane boundaries would be
+        # overwritten.
         for pane in self.panes:
             pane.render(img, ctx)
         self._draw_chrome(draw)
