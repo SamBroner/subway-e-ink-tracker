@@ -49,11 +49,18 @@ class PaneSurface:
     def _box(self, box):
         return (box[0] - self._ox, box[1] - self._oy, box[2] - self._ox, box[3] - self._oy)
 
+    def _translate_points(self, xy):
+        # ImageDraw.line accepts either a flat (x0, y0, x1, y1, ...) sequence or
+        # a list of (x, y) points; translate both forms by the origin.
+        if xy and isinstance(xy[0], (tuple, list)):
+            return [(x - self._ox, y - self._oy) for x, y in xy]
+        return tuple(c - (self._ox if i % 2 == 0 else self._oy) for i, c in enumerate(xy))
+
     def text(self, xy, *args, **kwargs):
         self._draw.text(self._pt(xy), *args, **kwargs)
 
     def line(self, xy, *args, **kwargs):
-        self._draw.line(self._box(xy), *args, **kwargs)
+        self._draw.line(self._translate_points(xy), *args, **kwargs)
 
     def ellipse(self, xy, *args, **kwargs):
         self._draw.ellipse(self._box(xy), *args, **kwargs)
@@ -65,8 +72,10 @@ class PaneSurface:
     def textlength(self, *args, **kwargs):
         return self._draw.textlength(*args, **kwargs)
 
-    def paste(self, im, box, mask=None):
-        self._tile.paste(im, self._pt(box), mask)
+    def paste(self, im, xy, mask=None):
+        # `mask` is typically the source image's own alpha — icons paste with
+        # themselves as the mask.
+        self._tile.paste(im, self._pt(xy), mask)
 
 
 class Pane:
