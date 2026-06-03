@@ -2,19 +2,17 @@
 
 from datetime import datetime
 
-from PIL import ImageDraw
-
 from ui.fonts import fonts
-from ui.panes.base import Pane
+from ui.panes.base import Pane, PaneSurface, RenderContext
 
 
 class DatePane(Pane):
     """Header: date and current time."""
 
-    def render(self, img, draw, ctx):
-        self._draw_time(draw, ctx.now)
+    def paint(self, surface: PaneSurface, ctx: RenderContext):
+        self._draw_time(surface, ctx.now)
 
-    def _draw_time(self, draw: ImageDraw.ImageDraw, now: datetime):
+    def _draw_time(self, surface: PaneSurface, now: datetime):
         """Draw the current time in the header section"""
         date_str = now.strftime("%a, %b %d")
         time_str = now.strftime("%I:%M:%S%p").lstrip('0').lower()
@@ -22,7 +20,7 @@ class DatePane(Pane):
         font = fonts.get('header')
 
         # Calculate positions for date and time
-        date_bbox = draw.textbbox((0, 0), date_str, font=font)
+        date_bbox = surface.textbbox((0, 0), date_str, font=font)
         date_width = date_bbox[2] - date_bbox[0]
 
         # Position date to end 30px before midline
@@ -33,12 +31,12 @@ class DatePane(Pane):
         # Draw vertical line at midline
         line_start_y = self.time.Y - 5  # Start slightly above text
         line_end_y = self.time.Y + fonts.get('header').size + 5  # End slightly below text
-        draw.line(
+        surface.line(
             (self.display.WIDTH // 2, line_start_y,
              self.display.WIDTH // 2, line_end_y),
             fill=0,
             width=5
         )
 
-        draw.text((date_x, self.time.Y), date_str, font=font, fill=0)
-        draw.text((time_x, self.time.Y), time_str, font=font, fill=0)
+        surface.text((date_x, self.time.Y), date_str, font=font, fill=0)
+        surface.text((time_x, self.time.Y), time_str, font=font, fill=0)
