@@ -126,6 +126,11 @@ class Config:
         # Environment variables
         logger.info("Loading configuration from environment variables...")
         self.DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+        # Binarize the final frame to pure black/white before display. The icons
+        # are monochrome line art, so nothing needs grayscale; thresholding away
+        # the anti-aliasing keeps DU (a 2-level waveform) crisp instead of fuzzy.
+        self.BINARIZE = os.getenv('BINARIZE', 'true').lower() == 'true'
+        self.BINARIZE_THRESHOLD = int(os.getenv('BINARIZE_THRESHOLD', '128'))
         self.STATION_ID = os.getenv('STATION_ID')
         self.TRAIN_LINE_1 = os.getenv('TRAIN_LINE_1')
         self.TRAIN_LINE_2 = os.getenv('TRAIN_LINE_2')

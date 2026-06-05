@@ -51,4 +51,8 @@ def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: Bik
         now=now,
         subway_unavailable=subway_unavailable,
     )
-    return _screen.render(ctx)
+    img = _screen.render(ctx)
+    if config.BINARIZE:
+        threshold = config.BINARIZE_THRESHOLD
+        img = img.point(lambda p: 255 if p >= threshold else 0)
+    return img
