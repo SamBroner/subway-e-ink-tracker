@@ -5,12 +5,14 @@ A screen is a `Screen` (a set of panes that tile the view, plus optional chrome)
 the runner switches the active screen in response to input (number keys today).
 """
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from PIL import ImageDraw
 
 from config.config import config
 from ui.screen import Screen
+from ui.panes import RenderContext
+from services.subway_service import TrainArrival
 from ui.panes import (
     DatePane,
     SubwayPane,
@@ -37,6 +39,44 @@ def _draw_transit_chrome(draw: ImageDraw.ImageDraw) -> None:
     draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)
 
 
+def _displayed_time(ctx: RenderContext) -> str:
+    return ctx.now.strftime("%I:%M:%S%p")
+
+
+def _train_key(train: Optional[TrainArrival]) -> Optional[tuple[str, int]]:
+    if train is None:
+        return None
+    return (train.train_id, train.minutes_until_arrival)
+
+
+def _top_two_train_keys(ctx: RenderContext) -> tuple[Optional[tuple[str, int]], Optional[tuple[str, int]]]:
+    subway = ctx.data.subway
+    trains = subway.trains if subway else []
+    return (
+        _train_key(trains[0]) if len(trains) > 0 else None,
+        _train_key(trains[1]) if len(trains) > 1 else None,
+    )
+
+
+def _transit_redraw_key(ctx: RenderContext) -> tuple:
+    subway = ctx.data.subway
+    return (
+        _displayed_time(ctx),
+        _top_two_train_keys(ctx),
+        subway.service_unavailable if subway else False,
+    )
+
+
+def _transit_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]) -> bool:
+    if prev_ctx is None:
+        return True
+    return _transit_redraw_key(ctx) != _transit_redraw_key(prev_ctx)
+
+
+def _static_should_redraw(_ctx: RenderContext, _prev_ctx: Optional[RenderContext]) -> bool:
+    return False
+
+
 def build_transit_screen() -> Screen:
     """The default screen: date, F/G arrivals, hourly weather, bikes, current weather."""
     d = config.display
@@ -47,13 +87,22 @@ def build_transit_screen() -> Screen:
         CitibikePane((0, d.WEATHER_SECTION_Y, d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
         WeatherOverviewPane((d.BOTTOM_VERTICAL_OFFSET, d.WEATHER_SECTION_Y, d.WIDTH - d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
     ]
-    return Screen(panes, chrome=_draw_transit_chrome)
+    return Screen(
+        panes,
+        chrome=_draw_transit_chrome,
+        required_data={"weather", "subway"},
+        redraw_policy=_transit_should_redraw,
+    )
 
 
 def build_hello_screen() -> Screen:
     """A minimal full-bleed screen for experimentation (no chrome)."""
     d = config.display
-    return Screen([HelloPane((0, 0, d.WIDTH, d.HEIGHT))])
+    return Screen(
+        [HelloPane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data=set(),
+        redraw_policy=_static_should_redraw,
+    )
 
 
 class ScreenManager:

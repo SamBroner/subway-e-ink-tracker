@@ -40,6 +40,22 @@ and `profile` (waveform / binarize; may start waveform-only).
 - Runner delegates the gate and redraw decision to the active screen; the
   hardcoded weather/train gate and `_has_significant_change` are removed.
 
+## Phase B2 — Typed app data + data hub
+
+Move the current transit-shaped runner state into typed, named app data:
+- Add `AppData` with optional `weather`, `subway`, and `bikes` payloads, plus
+  typed `DataKey` values (`weather`, `subway`, `bikes`).
+- Add `DataHub` to subscribe to the existing services, store the latest
+  `AppData`, start/stop feeds, and notify the runner on source updates.
+- Change `RenderContext` to carry `data: AppData` and `now`; panes read source
+  payloads through `ctx.data`.
+- Transit requires `weather` + `subway`; bikes remain optional and render as
+  placeholders when missing. Hello requires no data.
+- Keep `getImage(...)` backward compatible for golden tests by wrapping legacy
+  weather/train/bike arguments into `AppData`.
+- No intended visual change, cadence tuning, new screen behavior, or e-ink
+  quality work in this phase.
+
 ## Phase C — Automated tests
 
 1. **Pixel goldens** (existing): transit unchanged confirms the render path is
@@ -62,6 +78,10 @@ unit-test the mappings.
 
 Run on the Mac (`DEBUG=true`, `QUIET_MODE=false` so logs show) and on the Pi
 (interactive run; stop the service first so they don't fight over the panel).
+
+**Phase gate:** after each implementation phase, stop for local + Raspberry Pi
+manual testing before starting the next phase. Do not begin Phase B/C/D follow-up
+work until the previous phase has passed both environments.
 
 ### D1 — after Phase A: baseline unchanged
 - [ ] Mac: `uv run runner.py` → transit renders; clock ticks each second; data
@@ -88,4 +108,32 @@ Run on the Mac (`DEBUG=true`, `QUIET_MODE=false` so logs show) and on the Pi
 
 - **This doc is the durable plan** (survives sessions/compaction). Live progress
   is also mirrored in the session task list.
-- **Status:** PLANNED. Next action: Phase A on branch `second-screen`.
+- **Phase A:** COMPLETE. Runner timing now has an injected clock and the runner
+  decision path is covered by a recording fake display.
+- **Phase B:** CODE COMPLETE, pending D2 manual testing. `Screen` now owns
+  `requires()`, `should_redraw(ctx, prev_ctx)`, and a lightweight display
+  profile. Transit redraws when the displayed seconds value, top-two trains, or
+  subway availability changes. Hello declares no required data and no regular
+  redraws.
+- **Phase B2:** CODE COMPLETE, pending local + Pi manual testing. Runner now
+  owns lifecycle/timing/display decisions only; `DataHub` owns feed
+  subscriptions and latest typed `AppData`. `uv run pytest` passes locally
+  (65 passed, 3 skipped).
+- **Phase C:** NOT STARTED. Phase B added guard tests for its own contract and
+  runner behavior, but the broader Phase C checklist is gated on D2 local + Pi
+  manual testing. Pixel goldens are still transit-only; add the hello golden
+  only after D2 passes.
+- **Pi timing note:** After Phase A, the physical panel showed skipped seconds
+  (example: 25, 27, 31, 34, 35, 36, 37, 38, 40) rather than a steady 1 Hz
+  cadence. That matches the current display pipeline: the runner can generate a
+  frame every second, but the async display queue keeps only the latest pending
+  frame and the IT8951 update can take longer than one second. Phase B preserves
+  transit's requested every-displayed-second redraw behavior, while preventing
+  static screens from churning. Next e-ink quality work should decide whether to
+  remove seconds, update only the seconds glyph, or instrument actual panel
+  update latency before tuning cadence.
+- **Debug timing instrumentation:** `DEBUG_FRAME_HISTORY=true` keeps
+  `debug_output/current_display.png` behavior and also saves timestamped frames
+  to `debug_output/frames/` with per-frame queue timing in
+  `debug_output/frame_manifest.csv`. The Pi path logs consumed frame metadata,
+  queue wait/overwrite counts, and full/partial e-ink update durations.

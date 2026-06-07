@@ -14,7 +14,10 @@ class SubwayPane(Pane):
     """Train section: F/G arrivals, no-trains notice, or service-unavailable."""
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
-        self._draw_subway_info(surface, ctx.trains, ctx.now, ctx.subway_unavailable)
+        subway = ctx.data.subway
+        trains = subway.trains if subway else []
+        subway_unavailable = subway.service_unavailable if subway else False
+        self._draw_subway_info(surface, trains, ctx.now, subway_unavailable)
 
     def _draw_subway_info(self, surface: PaneSurface, trains: List[TrainArrival], now: datetime, subway_unavailable: bool = False):
         """Draw subway arrival information"""

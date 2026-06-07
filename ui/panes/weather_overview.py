@@ -14,7 +14,9 @@ class WeatherOverviewPane(Pane):
     """Bottom-right: enlarged current conditions, high/low, wind, precip."""
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
-        self._draw_weather_overview(surface, ctx.weather, ctx.now)
+        if ctx.data.weather is None:
+            return
+        self._draw_weather_overview(surface, ctx.data.weather, ctx.now)
 
     def _draw_weather_overview(self, surface: PaneSurface, weather_data: dict, now: datetime):
         """Render the enlarged current-weather card on the lower-right."""

@@ -1,4 +1,9 @@
-import spidev
+import pytest
+
+spidev = pytest.importorskip(
+    "spidev",
+    reason="Pi-only SPI library is unavailable",
+)
 import time
 
 def test_spi():

@@ -1,6 +1,9 @@
 # Local planning doc — never commit
 PORT_PLAN.md
 
+# Local agent/editor settings — never commit
+.claude/
+
 # macOS
 .DS_Store
 */.DS_Store
@@ -11,7 +14,7 @@ log.txt.*
 
 # Images
 assets/images/*.png
-debug_output/*.png
+debug_output/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

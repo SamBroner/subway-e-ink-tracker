@@ -8,7 +8,13 @@ behavior so later phases can move it onto the screen without changing it.
 
 from datetime import datetime, timedelta
 
+import pytest
+
+from data import AppData, DataHub
 from runner import Runner
+from services.citibike_service import BikeAvailability
+from services.subway_service import SubwayResult
+from ui.screens import screen_manager
 
 
 class FakeClock:
@@ -38,23 +44,46 @@ class RecordingDisplay:
     def initialize(self):
         pass
 
-    def update(self, weather_data=None, train_data=None, bike_data=None,
-               subway_unavailable=False, partial=False, clear=False):
-        self.calls.append({"partial": partial, "clear": clear})
+    def update(self, app_data=None, now=None, screen_name=None, partial=False, clear=False):
+        self.calls.append({
+            "app_data": app_data,
+            "partial": partial,
+            "clear": clear,
+            "now": now,
+            "screen_name": screen_name,
+        })
+
+
+@pytest.fixture(autouse=True)
+def reset_screen_manager():
+    screen_manager.select(0)
+    yield
+    screen_manager.select(0)
 
 
 def _ready_runner():
     clock = FakeClock()
     disp = RecordingDisplay()
-    runner = Runner(display=disp, clock=clock)
-    runner.state.weather_data = {"current": {}}  # truthy -> passes the data gate
-    runner.state.train_data = []                 # not None -> passes the data gate
+    hub = DataHub(initial_data=AppData(
+        weather={"current": {}},
+        subway=SubwayResult(trains=[]),
+    ))
+    runner = Runner(display=disp, clock=clock, data_hub=hub)
     return runner, disp, clock
+
+
+def _bike_availability() -> BikeAvailability:
+    return BikeAvailability(
+        classic_bikes=7,
+        ebikes=2,
+        station_id="station",
+        station_name="Station",
+    )
 
 
 def test_gate_blocks_without_data():
     disp = RecordingDisplay()
-    runner = Runner(display=disp, clock=FakeClock())
+    runner = Runner(display=disp, clock=FakeClock(), data_hub=DataHub())
     # No weather/train data set yet -> the essential-data gate blocks rendering.
     runner._check_display_update()
     assert disp.calls == []
@@ -64,6 +93,8 @@ def test_first_update_renders():
     runner, disp, _ = _ready_runner()
     runner._check_display_update()
     assert len(disp.calls) == 1
+    assert disp.calls[0]["screen_name"] == "transit"
+    assert disp.calls[0]["app_data"].bikes is None
 
 
 def test_min_interval_throttles():
@@ -74,3 +105,53 @@ def test_min_interval_throttles():
     clock.advance(2)                      # past the 1s min_interval
     runner._check_display_update()
     assert len(disp.calls) == 2
+
+
+def test_runner_passes_injected_now_to_display():
+    runner, disp, clock = _ready_runner()
+    runner._check_display_update()
+    assert disp.calls[0]["now"] == clock.now()
+
+
+def test_bike_update_alone_does_not_unblock_transit_but_is_kept():
+    clock = FakeClock()
+    disp = RecordingDisplay()
+    hub = DataHub()
+    runner = Runner(display=disp, clock=clock, data_hub=hub)
+    bikes = _bike_availability()
+
+    hub.handle_bike_update(bikes)
+    assert disp.calls == []
+
+    hub.handle_weather_update({"current": {}})
+    assert disp.calls == []
+
+    hub.handle_subway_update(SubwayResult(trains=[]))
+    assert len(disp.calls) == 1
+    assert disp.calls[0]["app_data"].bikes == bikes
+
+
+def test_hello_screen_renders_without_transit_data_on_switch():
+    disp = RecordingDisplay()
+    runner = Runner(display=disp, clock=FakeClock(), data_hub=DataHub())
+    runner._on_screen_key(2)
+    assert disp.calls == [{
+        "app_data": AppData(),
+        "partial": False,
+        "clear": True,
+        "now": runner.clock.now(),
+        "screen_name": "hello",
+    }]
+
+
+def test_static_hello_screen_does_not_redraw_each_tick():
+    screen_manager.select(1)
+    clock = FakeClock()
+    disp = RecordingDisplay()
+    runner = Runner(display=disp, clock=clock, data_hub=DataHub())
+
+    runner._check_display_update()
+    clock.advance(2)
+    runner._check_display_update()
+
+    assert len(disp.calls) == 1

@@ -18,10 +18,14 @@ __all__ = [
 ]
 
 from PIL import Image, ImageDraw, ImageFont
+import pytest
 
 from sys import path
 path += ['../../']
-from IT8951 import constants
+constants = pytest.importorskip(
+    "IT8951.constants",
+    reason="Pi-only IT8951 display driver is unavailable",
+)
 
 def print_system_info(display):
     epd = display.epd
