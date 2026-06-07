@@ -32,6 +32,13 @@ class DisplayIntent(Enum):
     MAINTENANCE_CLEAR = "maintenance_clear"
 
 
+_INTENT_PRIORITY = {
+    DisplayIntent.NORMAL: 0,
+    DisplayIntent.MAINTENANCE_CLEAR: 1,
+    DisplayIntent.SCREEN_TRANSITION: 2,
+}
+
+
 @dataclass
 class DisplayFrame:
     image: Image.Image
@@ -340,6 +347,7 @@ class Display:
         self.clear_cooldown_seconds = config.timing.DISPLAY_CLEAR_COOLDOWN_SECONDS
         self._large_update_cooldown_until = 0
         self._queue_lock = threading.Lock()
+        self._queue_ready = threading.Condition(self._queue_lock)
         self._frame_sequence = 0
         self._pending_overwrite_count = 0
         self.update_thread = threading.Thread(target=self._process_queue)
@@ -359,37 +367,93 @@ class Display:
         self.display.initialize()
 
     def _process_queue(self):
-        """Process the latest img, ensuring only one update per second"""
+        """Process the latest queued frame, waking when new work becomes available."""
         while True:
             try:
-                now = time.time()
-                frame = self._take_next_frame(now)
-
-                if frame is not None:
-                    self.display.update(frame.image, frame.partial, frame.clear, frame)
-                    if self._starts_large_update_cooldown(frame):
-                        with self._queue_lock:
-                            self._large_update_cooldown_until = time.time() + self.clear_cooldown_seconds
-                time.sleep(1)  # Ensure only one update per second
+                frame = self._wait_for_next_frame()
+                self.display.update(frame.image, frame.partial, frame.clear, frame)
+                if self._starts_large_update_cooldown(frame):
+                    with self._queue_ready:
+                        self._large_update_cooldown_until = time.time() + self.clear_cooldown_seconds
+                        self._queue_ready.notify_all()
             except Exception as e:
                 logger.error(f"Error processing update queue: {str(e)}")
                 logger.error(traceback.format_exc())
 
-    def _take_next_frame(self, now: float) -> DisplayFrame | None:
-        with self._queue_lock:
-            if self.next_frame is None:
-                return None
-            if (
-                self.next_frame.intent == DisplayIntent.NORMAL
-                and now < self._large_update_cooldown_until
-            ):
-                return None
+    def _wait_for_next_frame(self) -> DisplayFrame:
+        with self._queue_ready:
+            while True:
+                frame = self._take_next_frame_locked(time.time())
+                if frame is not None:
+                    return frame
 
-            frame = self.next_frame
-            self.next_frame = None
-            frame.overwritten_before_consume = self._pending_overwrite_count
-            self._pending_overwrite_count = 0
-            return frame
+                timeout = self._seconds_until_next_consumable_frame(time.time())
+                self._queue_ready.wait(timeout=timeout)
+
+    def _take_next_frame(self, now: float) -> DisplayFrame | None:
+        with self._queue_ready:
+            return self._take_next_frame_locked(now)
+
+    def _take_next_frame_locked(self, now: float) -> DisplayFrame | None:
+        if self.next_frame is None:
+            return None
+        if (
+            self.next_frame.intent == DisplayIntent.NORMAL
+            and now < self._large_update_cooldown_until
+        ):
+            return None
+
+        frame = self.next_frame
+        self.next_frame = None
+        frame.overwritten_before_consume = self._pending_overwrite_count
+        self._pending_overwrite_count = 0
+        return frame
+
+    def _seconds_until_next_consumable_frame(self, now: float) -> float | None:
+        if self.next_frame is None:
+            return None
+        if (
+            self.next_frame.intent == DisplayIntent.NORMAL
+            and now < self._large_update_cooldown_until
+        ):
+            return max(0, self._large_update_cooldown_until - now)
+        return 0
+
+    def _can_replace_pending_frame(self, intent: DisplayIntent) -> bool:
+        if self.next_frame is None:
+            return True
+        return _INTENT_PRIORITY[intent] >= _INTENT_PRIORITY[self.next_frame.intent]
+
+    def _queue_frame(self, frame: DisplayFrame) -> bool:
+        with self._queue_ready:
+            if not self._can_replace_pending_frame(frame.intent):
+                logger.info(
+                    "Ignoring display frame sequence=%s intent=%s because pending intent=%s has higher priority",
+                    frame.sequence,
+                    frame.intent.value,
+                    self.next_frame.intent.value,
+                )
+                return False
+
+            if self.next_frame is not None:
+                self._pending_overwrite_count += 1
+                logger.info(
+                    "Replacing queued display frame with sequence=%s (pending_overwrites=%s)",
+                    frame.sequence,
+                    self._pending_overwrite_count,
+                )
+            self.next_frame = frame
+            self._queue_ready.notify()
+            return True
+
+    def _can_accept_intent_without_render(self, intent: DisplayIntent) -> bool:
+        with self._queue_lock:
+            return self._can_replace_pending_frame(intent)
+
+    def _next_frame_sequence(self) -> int:
+        with self._queue_lock:
+            self._frame_sequence += 1
+            return self._frame_sequence
 
     def _starts_large_update_cooldown(self, frame: DisplayFrame) -> bool:
         return frame.intent in {
@@ -410,33 +474,30 @@ class Display:
         try:
             logger.info("Generating display image...")
             display_intent = _coerce_intent(intent, clear)
+            if not self._can_accept_intent_without_render(display_intent):
+                logger.info("Skipping %s render because a higher-priority frame is already pending", display_intent.value)
+                return
+
             img = getImageFromAppData(
                 app_data,
                 now=now,
                 screen_name=screen_name,
             )
             queued_at = time.time()
-            with self._queue_lock:
-                self._frame_sequence += 1
-                frame = DisplayFrame(
-                    image=img,
-                    partial=partial,
-                    clear=clear,
-                    screen_name=screen_name,
-                    render_requested_at=now,
-                    queued_at=queued_at,
-                    sequence=self._frame_sequence,
-                    displayed_clock=_displayed_clock(now),
-                    intent=display_intent,
-                )
-                if self.next_frame is not None:
-                    self._pending_overwrite_count += 1
-                    logger.info(
-                        "Replacing queued display frame with sequence=%s (pending_overwrites=%s)",
-                        frame.sequence,
-                        self._pending_overwrite_count,
-                    )
-                self.next_frame = frame
+            frame = DisplayFrame(
+                image=img,
+                partial=partial,
+                clear=clear,
+                screen_name=screen_name,
+                render_requested_at=now,
+                queued_at=queued_at,
+                sequence=self._next_frame_sequence(),
+                displayed_clock=_displayed_clock(now),
+                intent=display_intent,
+            )
+            queued = self._queue_frame(frame)
+            if not queued:
+                return
                 
         except Exception as e:
             logger.error(f"Error queuing display update: {str(e)}")

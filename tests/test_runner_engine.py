@@ -141,10 +141,10 @@ def test_bike_update_alone_does_not_unblock_transit_but_is_kept():
     assert disp.calls[0]["app_data"].bikes == bikes
 
 
-def test_hello_screen_renders_without_transit_data_on_switch():
+def test_spacebar_advance_renders_hello_without_transit_data():
     disp = RecordingDisplay()
     runner = Runner(display=disp, clock=FakeClock(), data_hub=DataHub())
-    runner._on_screen_key(2)
+    runner._advance_screen()
     assert disp.calls == [{
         "app_data": AppData(),
         "partial": False,
@@ -153,6 +153,24 @@ def test_hello_screen_renders_without_transit_data_on_switch():
         "now": runner.clock.now(),
         "screen_name": "hello",
     }]
+
+
+def test_spacebar_advance_cycles_through_all_screens():
+    runner, disp, _ = _ready_runner()
+
+    for _ in range(screen_manager.count()):
+        runner._advance_screen()
+
+    assert [call["screen_name"] for call in disp.calls] == [
+        "hello",
+        "bird-1",
+        "bird-2",
+        "bird-3",
+        "bird-4",
+        "bird-5",
+        "transit",
+    ]
+    assert all(call["intent"] == DisplayIntent.SCREEN_TRANSITION for call in disp.calls)
 
 
 def test_static_hello_screen_does_not_redraw_each_tick():

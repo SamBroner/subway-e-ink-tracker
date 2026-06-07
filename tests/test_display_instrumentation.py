@@ -125,6 +125,65 @@ def test_display_queue_allows_screen_transitions_during_large_update_cooldown(mo
     assert display.next_frame is None
 
 
+def test_normal_frame_does_not_replace_pending_screen_transition(monkeypatch):
+    display = _display_without_thread()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append(screen_name)
+        return _image()
+
+    monkeypatch.setattr(display_module, "getImageFromAppData", fake_render)
+
+    display.update(
+        AppData(),
+        now=datetime(2026, 1, 15, 14, 23, 1),
+        screen_name="hello",
+        intent=DisplayIntent.SCREEN_TRANSITION,
+    )
+    display.update(
+        AppData(),
+        now=datetime(2026, 1, 15, 14, 23, 2),
+        screen_name="transit",
+        intent=DisplayIntent.NORMAL,
+    )
+    frame = display._take_next_frame(time.time())
+
+    assert frame is not None
+    assert frame.screen_name == "hello"
+    assert frame.intent == DisplayIntent.SCREEN_TRANSITION
+    assert render_calls == ["hello"]
+
+
+def test_screen_transition_replaces_pending_normal_frame(monkeypatch):
+    display = _display_without_thread()
+
+    monkeypatch.setattr(
+        display_module,
+        "getImageFromAppData",
+        lambda app_data, now=None, screen_name=None: _image(),
+    )
+
+    display.update(
+        AppData(),
+        now=datetime(2026, 1, 15, 14, 23, 1),
+        screen_name="transit",
+        intent=DisplayIntent.NORMAL,
+    )
+    display.update(
+        AppData(),
+        now=datetime(2026, 1, 15, 14, 23, 2),
+        screen_name="hello",
+        intent=DisplayIntent.SCREEN_TRANSITION,
+    )
+    frame = display._take_next_frame(time.time())
+
+    assert frame is not None
+    assert frame.screen_name == "hello"
+    assert frame.intent == DisplayIntent.SCREEN_TRANSITION
+    assert frame.overwritten_before_consume == 1
+
+
 def test_legacy_clear_frames_map_to_maintenance_clear(monkeypatch):
     display = _display_without_thread()
 
@@ -147,6 +206,7 @@ def _display_without_thread():
     display.clear_cooldown_seconds = 5
     display._large_update_cooldown_until = 0
     display._queue_lock = threading.Lock()
+    display._queue_ready = threading.Condition(display._queue_lock)
     display._frame_sequence = 0
     display._pending_overwrite_count = 0
     return display

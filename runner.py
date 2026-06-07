@@ -9,7 +9,7 @@ from config.config import config
 from ui.display import Display, DisplayIntent
 from ui.panes import RenderContext
 from ui.screens import screen_manager
-from ui.key_input import start_digit_listener
+from ui.key_input import start_spacebar_listener
 import logging
 import logging.handlers
 
@@ -197,11 +197,10 @@ class Runner:
         except Exception as e:
             logger.error(f"Error updating display: {str(e)}")
 
-    def _on_screen_key(self, digit: int):
-        """Switch to the screen mapped to a 1-based number key and force a transition redraw."""
-        index = digit - 1
-        if 0 <= index < screen_manager.count() and screen_manager.select(index):
-            logger.info(f"Switched to screen {digit} ({screen_manager.current_name()})")
+    def _advance_screen(self):
+        """Advance to the next registered screen and force a transition redraw."""
+        if screen_manager.advance():
+            logger.info(f"Advanced to screen {screen_manager.current_name()}")
             self._previous_render_ctx = None
             self._previous_screen_name = None
             self._check_display_update(
@@ -220,12 +219,11 @@ class Runner:
             # Subscribe to and start all data feeds.
             self.data_hub.start()
 
-            # Interactive screen switching: press 1..N to switch screens.
+            # Interactive screen switching: press space to advance screens.
             # No-ops when there's no tty (e.g. running as a systemd service).
-            if start_digit_listener(self._on_screen_key):
+            if start_spacebar_listener(self._advance_screen):
                 logger.info(
-                    "Screen switching enabled: press %s (%s)",
-                    "/".join(str(i + 1) for i in range(screen_manager.count())),
+                    "Screen switching enabled: press Space to cycle screens (%s)",
                     ", ".join(screen_manager.names()),
                 )
 

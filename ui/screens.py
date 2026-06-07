@@ -2,10 +2,11 @@
 
 A screen is a `Screen` (a set of panes that tile the view, plus optional chrome).
 `ScreenManager` registers the available screens and tracks which one is active;
-the runner switches the active screen in response to input (number keys today).
+the runner advances the active screen in response to input.
 """
 
 from typing import List, Optional, Tuple
+from pathlib import Path
 
 from PIL import ImageDraw
 
@@ -20,6 +21,14 @@ from ui.panes import (
     CitibikePane,
     WeatherOverviewPane,
     HelloPane,
+    StaticImagePane,
+)
+
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+_BIRD_IMAGE_DIR = _ROOT_DIR / "assets" / "birdstuff"
+BIRD_IMAGE_PATHS = tuple(
+    _BIRD_IMAGE_DIR / f"birds_{index:02d}.png"
+    for index in range(1, 6)
 )
 
 
@@ -105,6 +114,16 @@ def build_hello_screen() -> Screen:
     )
 
 
+def build_static_image_screen(image_path: Path) -> Screen:
+    """A full-screen static image screen."""
+    d = config.display
+    return Screen(
+        [StaticImagePane((0, 0, d.WIDTH, d.HEIGHT), image_path)],
+        required_data=set(),
+        redraw_policy=_static_should_redraw,
+    )
+
+
 class ScreenManager:
     """Holds the registered screens and the active selection."""
 
@@ -138,10 +157,20 @@ class ScreenManager:
             return changed
         return False
 
+    def advance(self) -> bool:
+        """Advance to the next registered screen; returns True if the active screen changed."""
+        if len(self._screens) <= 1:
+            return False
+        self._index = (self._index + 1) % len(self._screens)
+        return True
 
-# Registered screens, in order. Number keys map 1-based to this order
-# (1 -> transit, 2 -> hello). The first is the default/active at startup.
+# Registered screens, in order. Spacebar advances through this order.
+# The first is the default/active at startup.
 screen_manager = ScreenManager([
     ("transit", build_transit_screen()),
     ("hello", build_hello_screen()),
+    *(
+        (f"bird-{index}", build_static_image_screen(path))
+        for index, path in enumerate(BIRD_IMAGE_PATHS, start=1)
+    ),
 ])

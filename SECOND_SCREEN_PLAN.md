@@ -107,13 +107,14 @@ work until the previous phase has passed both environments.
 
 ### D2 — after Phase B: screen contract + switching
 - [ ] Mac: transit still updates each second / on data (cadence unchanged).
-- [ ] Mac: press `2` → hello shows immediately, even before weather/trains load.
-- [ ] Mac: press `1` → transit resumes updating.
+- [ ] Mac: press Space → hello shows immediately, even before weather/trains load.
+- [ ] Mac: press Space repeatedly → bird-1 through bird-5 render, then transit
+      resumes updating.
 - [ ] Mac: on hello, the saved frame does **not** churn every second (static; no flicker).
-- [ ] Pi: switch transit↔hello on the panel — transit cadence unchanged; switch
-      is a single clean full refresh.
-- Pass criteria: switching works both directions; transit behavior unchanged;
-  hello is not gated on data; no static-screen churn.
+- [ ] Pi: cycle transit → hello → bird-1 ... bird-5 → transit on the panel;
+      transit cadence unchanged; each switch is a single clean full refresh.
+- Pass criteria: switching works through the full ordered cycle; transit behavior
+  unchanged; static screens are not gated on data and do not churn every second.
 
 ### D3 — after Phase C: regression + e-ink quality
 - [ ] Pi: ~1-hour soak on each screen — no new ghosting/latency vs current main.
@@ -140,6 +141,13 @@ work until the previous phase has passed both environments.
 - **Phase B3:** CODE COMPLETE, pending Mac + Pi manual testing. Display updates
   now carry explicit intents so screen transitions are immediate full-screen
   GLR16 updates, while routine redraws are blocked briefly after large updates.
+- **Input/wake follow-up:** CODE COMPLETE, pending Mac + Pi manual testing.
+  Interactive input is now a debounced spacebar/capacitive-button-style
+  "advance screen" action, and the display slot wakes immediately while
+  remaining latest-wins rather than FIFO.
+- **Bird screens:** CODE COMPLETE, pending Mac + Pi manual testing. Five
+  full-screen static bird image screens are registered after hello in the
+  spacebar cycle.
 - **Phase C:** NOT STARTED. Phase B added guard tests for its own contract and
   runner behavior, but the broader Phase C checklist is gated on D2 local + Pi
   manual testing. Pixel goldens are still transit-only; add the hello golden
