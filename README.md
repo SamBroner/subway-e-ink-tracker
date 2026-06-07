@@ -64,15 +64,20 @@ local). Copy `config/.env.template` and fill it in:
 | `CITIBIKE_STATION_NAME` | yes | Display name for the bike station |
 | `WEATHER_LAT`, `WEATHER_LON` | no | Coordinates (defaults to NYC center) |
 | `DEBUG` | no | `true` saves a render to `debug_output/` instead of driving the display |
+| `DEBUG_FRAME_HISTORY` | no | `true` also saves timestamped debug frames and `debug_output/frame_manifest.csv` |
 | `QUIET_MODE` | no | `true` suppresses console output |
+
+Values provided in the shell take precedence over `config/.env`, which is useful
+for smoke tests such as `DEBUG=true QUIET_MODE=false uv run runner.py`.
 
 Find your Citi Bike station's UUID and name in the GBFS feed:
 <https://gbfs.citibikenyc.com/gbfs/en/station_information.json>
 
 ### Running
 
-If `DEBUG=true` in your `config/.env`:
+If `DEBUG=true` in your environment:
 - Images will be saved to `debug_output/current_display.png`
+- If `DEBUG_FRAME_HISTORY=true`, timestamped frames are also saved to `debug_output/frames/` with timing metadata in `debug_output/frame_manifest.csv`
 - Your system's default image viewer will automatically open and update with each refresh
 - The image viewer will refresh automatically when new data arrives
 

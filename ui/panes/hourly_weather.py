@@ -13,7 +13,9 @@ class HourlyWeatherPane(Pane):
     """Right lane: the next 12 hours of forecast."""
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
-        self._draw_vertical_lane(surface, ctx.weather, ctx.now)
+        if ctx.data.weather is None:
+            return
+        self._draw_vertical_lane(surface, ctx.data.weather, ctx.now)
 
     def _draw_vertical_lane(self, surface: PaneSurface, weather_data: dict, now: datetime):
         """Draw the vertical lane with hourly forecast only."""

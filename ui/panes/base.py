@@ -10,23 +10,18 @@ authoritative: a pane cannot draw outside its own region.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 from PIL import Image, ImageDraw
 
 from config.config import config
-from services.subway_service import TrainArrival
-from services.citibike_service import BikeAvailability
+from data.models import AppData
 
 
 @dataclass
 class RenderContext:
     """Everything a pane might need for one frame, built once per render."""
-    weather: dict
-    trains: List[TrainArrival]
-    bikes: Optional[BikeAvailability]
+    data: AppData
     now: datetime
-    subway_unavailable: bool = False
 
 
 class PaneSurface:

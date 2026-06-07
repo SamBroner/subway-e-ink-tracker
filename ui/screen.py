@@ -1,51 +1,68 @@
 """A screen: the ordered set of panes that fill the display.
 
-`Screen.render` builds the blank frame, renders each pane into it, draws the
-chrome (the section dividers that span panes) on top, and applies the 180°
-rotation for the panel's physical orientation.
+`Screen.render` builds the blank frame, renders each pane into it, optionally
+draws cross-pane chrome (e.g. section dividers) on top, and applies the 180°
+rotation for the panel's physical orientation. Chrome is per-screen: a screen
+with no dividers (e.g. a full-bleed hello screen) simply passes none.
 """
 
-from typing import List
+from dataclasses import dataclass
+from typing import Callable, List, Optional
 
 from PIL import Image, ImageDraw
 
 from config.config import config
+from data.models import DataKey
 from ui.panes import Pane, RenderContext
 
 
+@dataclass(frozen=True)
+class ScreenProfile:
+    """Display-adapter preferences for a screen.
+
+    The current adapter still maps the runner's partial/clear flags to the
+    panel modes. Keeping the profile on Screen now gives the engine a stable
+    place to read waveform/binarization preferences in the next pass.
+    """
+    waveform: str = "DU"
+    binarize: bool = False
+
+
+RedrawPolicy = Callable[[RenderContext, Optional[RenderContext]], bool]
+
+
 class Screen:
-    def __init__(self, panes: List[Pane]):
+    def __init__(
+        self,
+        panes: List[Pane],
+        chrome: Optional[Callable[[ImageDraw.ImageDraw], None]] = None,
+        required_data: Optional[set[DataKey]] = None,
+        redraw_policy: Optional[RedrawPolicy] = None,
+        profile: Optional[ScreenProfile] = None,
+    ):
         self.panes = panes
+        # Optional callable(draw) for cross-pane chrome, drawn on top of the panes.
+        self.chrome = chrome
+        self._required_data = frozenset(required_data or set())
+        self._redraw_policy = redraw_policy or (lambda _ctx, _prev_ctx: False)
+        self.profile = profile or ScreenProfile()
+
+    def requires(self) -> set[DataKey]:
+        return set(self._required_data)
+
+    def should_redraw(self, ctx: RenderContext, prev_ctx: Optional[RenderContext]) -> bool:
+        return self._redraw_policy(ctx, prev_ctx)
 
     def render(self, ctx: RenderContext) -> Image.Image:
         d = config.display
         img = Image.new('L', (d.WIDTH, d.HEIGHT), 255)
         draw = ImageDraw.Draw(img)
 
-        # Panes first, then chrome on top: panes paste opaque tiles, so the
-        # chrome must be drawn last or the dividers at pane boundaries would be
-        # overwritten.
+        # Panes first, then chrome on top — panes paste opaque tiles, so chrome
+        # drawn last keeps the boundary dividers from being overwritten.
         for pane in self.panes:
             pane.render(img, ctx)
-        self._draw_chrome(draw)
+        if self.chrome is not None:
+            self.chrome(draw)
 
         return img.rotate(180)
-
-    def _draw_chrome(self, draw: ImageDraw.ImageDraw) -> None:
-        """Draw the section dividers that separate the panes."""
-        d = config.display
-
-        # Line between header and train section
-        draw.line((0, d.HEADER_HEIGHT, d.WIDTH, d.HEADER_HEIGHT), fill=0)
-
-        # Line between train and weather section - full width
-        bottom_divider_y = d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT
-        draw.line((0, bottom_divider_y, d.WIDTH, bottom_divider_y), fill=0)
-
-        # Vertical line for the right (hourly) lane
-        draw.line((d.VERTICAL_LANE_X, d.HEADER_HEIGHT,
-                   d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT), fill=0)
-
-        # Vertical line splitting the bottom section (bikes | weather)
-        bottom_vertical_x = d.BOTTOM_VERTICAL_OFFSET
-        draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)

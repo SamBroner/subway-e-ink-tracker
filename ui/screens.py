@@ -1,0 +1,176 @@
+"""Screen definitions and the active-screen manager.
+
+A screen is a `Screen` (a set of panes that tile the view, plus optional chrome).
+`ScreenManager` registers the available screens and tracks which one is active;
+the runner advances the active screen in response to input.
+"""
+
+from typing import List, Optional, Tuple
+from pathlib import Path
+
+from PIL import ImageDraw
+
+from config.config import config
+from ui.screen import Screen
+from ui.panes import RenderContext
+from services.subway_service import TrainArrival
+from ui.panes import (
+    DatePane,
+    SubwayPane,
+    HourlyWeatherPane,
+    CitibikePane,
+    WeatherOverviewPane,
+    HelloPane,
+    StaticImagePane,
+)
+
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+_BIRD_IMAGE_DIR = _ROOT_DIR / "assets" / "birdstuff"
+BIRD_IMAGE_PATHS = tuple(
+    _BIRD_IMAGE_DIR / f"birds_{index:02d}.png"
+    for index in range(1, 6)
+)
+
+
+def _draw_transit_chrome(draw: ImageDraw.ImageDraw) -> None:
+    """Section dividers for the transit screen."""
+    d = config.display
+    # Header / train divider
+    draw.line((0, d.HEADER_HEIGHT, d.WIDTH, d.HEADER_HEIGHT), fill=0)
+    # Train / bottom divider (full width)
+    bottom_divider_y = d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT
+    draw.line((0, bottom_divider_y, d.WIDTH, bottom_divider_y), fill=0)
+    # Vertical line for the right (hourly) lane
+    draw.line((d.VERTICAL_LANE_X, d.HEADER_HEIGHT,
+               d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT), fill=0)
+    # Vertical line splitting the bottom section (bikes | weather)
+    bottom_vertical_x = d.BOTTOM_VERTICAL_OFFSET
+    draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)
+
+
+def _displayed_time(ctx: RenderContext) -> str:
+    return ctx.now.strftime("%I:%M:%S%p")
+
+
+def _train_key(train: Optional[TrainArrival]) -> Optional[tuple[str, int]]:
+    if train is None:
+        return None
+    return (train.train_id, train.minutes_until_arrival)
+
+
+def _top_two_train_keys(ctx: RenderContext) -> tuple[Optional[tuple[str, int]], Optional[tuple[str, int]]]:
+    subway = ctx.data.subway
+    trains = subway.trains if subway else []
+    return (
+        _train_key(trains[0]) if len(trains) > 0 else None,
+        _train_key(trains[1]) if len(trains) > 1 else None,
+    )
+
+
+def _transit_redraw_key(ctx: RenderContext) -> tuple:
+    subway = ctx.data.subway
+    return (
+        _displayed_time(ctx),
+        _top_two_train_keys(ctx),
+        subway.service_unavailable if subway else False,
+    )
+
+
+def _transit_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]) -> bool:
+    if prev_ctx is None:
+        return True
+    return _transit_redraw_key(ctx) != _transit_redraw_key(prev_ctx)
+
+
+def _static_should_redraw(_ctx: RenderContext, _prev_ctx: Optional[RenderContext]) -> bool:
+    return False
+
+
+def build_transit_screen() -> Screen:
+    """The default screen: date, F/G arrivals, hourly weather, bikes, current weather."""
+    d = config.display
+    panes = [
+        DatePane((0, 0, d.WIDTH, d.HEADER_HEIGHT)),
+        SubwayPane((0, d.TRAIN_SECTION_Y, d.MAIN_SECTION_WIDTH, d.TRAIN_SECTION_HEIGHT)),
+        HourlyWeatherPane((d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y, d.VERTICAL_LANE_WIDTH, d.TRAIN_SECTION_HEIGHT)),
+        CitibikePane((0, d.WEATHER_SECTION_Y, d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
+        WeatherOverviewPane((d.BOTTOM_VERTICAL_OFFSET, d.WEATHER_SECTION_Y, d.WIDTH - d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
+    ]
+    return Screen(
+        panes,
+        chrome=_draw_transit_chrome,
+        required_data={"weather", "subway"},
+        redraw_policy=_transit_should_redraw,
+    )
+
+
+def build_hello_screen() -> Screen:
+    """A minimal full-bleed screen for experimentation (no chrome)."""
+    d = config.display
+    return Screen(
+        [HelloPane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data=set(),
+        redraw_policy=_static_should_redraw,
+    )
+
+
+def build_static_image_screen(image_path: Path) -> Screen:
+    """A full-screen static image screen."""
+    d = config.display
+    return Screen(
+        [StaticImagePane((0, 0, d.WIDTH, d.HEIGHT), image_path)],
+        required_data=set(),
+        redraw_policy=_static_should_redraw,
+    )
+
+
+class ScreenManager:
+    """Holds the registered screens and the active selection."""
+
+    def __init__(self, screens: List[Tuple[str, Screen]]):
+        self._screens = screens
+        self._index = 0
+
+    def current(self) -> Screen:
+        return self._screens[self._index][1]
+
+    def current_name(self) -> str:
+        return self._screens[self._index][0]
+
+    def names(self) -> List[str]:
+        return [name for name, _ in self._screens]
+
+    def count(self) -> int:
+        return len(self._screens)
+
+    def get(self, name: str) -> Screen:
+        for n, screen in self._screens:
+            if n == name:
+                return screen
+        raise KeyError(f"No screen named {name!r}; have {self.names()}")
+
+    def select(self, index: int) -> bool:
+        """Activate a screen by 0-based index; returns True if the active screen changed."""
+        if 0 <= index < len(self._screens):
+            changed = index != self._index
+            self._index = index
+            return changed
+        return False
+
+    def advance(self) -> bool:
+        """Advance to the next registered screen; returns True if the active screen changed."""
+        if len(self._screens) <= 1:
+            return False
+        self._index = (self._index + 1) % len(self._screens)
+        return True
+
+# Registered screens, in order. Spacebar advances through this order.
+# The first is the default/active at startup.
+screen_manager = ScreenManager([
+    ("transit", build_transit_screen()),
+    ("hello", build_hello_screen()),
+    *(
+        (f"bird-{index}", build_static_image_screen(path))
+        for index, path in enumerate(BIRD_IMAGE_PATHS, start=1)
+    ),
+])

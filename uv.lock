@@ -409,6 +409,12 @@ wheels = [
 ]
 
 [[package]]
+name = "spidev"
+version = "3.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/87/039b6eeea781598015b538691bc174cc0bf77df9d4d2d3b8bf9245c0de8c/spidev-3.8.tar.gz", hash = "sha256:2bc02fb8c6312d519ebf1f4331067427c0921d3f77b8bcaf05189a2e8b8382c0", size = 13893 }
+
+[[package]]
 name = "subway-eink"
 version = "0.1.0"
 source = { virtual = "." }
@@ -424,6 +430,7 @@ dependencies = [
     { name = "pytz" },
     { name = "requests" },
     { name = "rpi-gpio", marker = "sys_platform == 'linux'" },
+    { name = "spidev", marker = "sys_platform == 'linux'" },
 ]
 
 [package.dev-dependencies]
@@ -444,6 +451,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2024.2" },
     { name = "requests", specifier = ">=2.32.3" },
     { name = "rpi-gpio", marker = "sys_platform == 'linux'", specifier = ">=0.7.1" },
+    { name = "spidev", marker = "sys_platform == 'linux'", specifier = ">=3.6" },
 ]
 
 [package.metadata.requires-dev]

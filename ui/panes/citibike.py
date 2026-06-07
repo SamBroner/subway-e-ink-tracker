@@ -10,7 +10,7 @@ class CitibikePane(Pane):
     """Bottom-left: classic and e-bike counts."""
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
-        self._draw_bike_panel(surface, ctx.bikes)
+        self._draw_bike_panel(surface, ctx.data.bikes)
 
     def _draw_bike_panel(self, surface: PaneSurface, bike_data: BikeAvailability | None):
         """Draw bike counts with stacked icons on the left side of the bottom section."""
