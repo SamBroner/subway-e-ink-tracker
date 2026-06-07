@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Callable, List
 import threading
-import time
 import requests
 from datetime import datetime, timedelta
 
@@ -161,7 +160,10 @@ class WeatherService:
         self._subscribers: List[Callable[[Dict], None]] = []
         self._update_thread: threading.Thread | None = None
         self._should_run = False
+        self._stop_event = threading.Event()
         self._current_data: Dict | None = None
+        self.request_timeout_seconds = 10
+        self.initial_retry_seconds = 15
     
     def subscribe(self, callback: Callable[[Dict], None]):
         """Subscribe to weather updates"""
@@ -176,6 +178,7 @@ class WeatherService:
             return
         
         self._should_run = True
+        self._stop_event.clear()
         self._update_thread = threading.Thread(target=self._update_loop, args=(interval_seconds,))
         self._update_thread.daemon = True
         self._update_thread.start()
@@ -184,10 +187,16 @@ class WeatherService:
     def stop_updates(self):
         """Stop periodic updates"""
         self._should_run = False
+        self._stop_event.set()
         if self._update_thread:
             self._update_thread.join()
             self._update_thread = None
         logger.info("Stopped weather updates")
+
+    def _retry_delay_after_error(self, interval_seconds: int) -> int:
+        if self._current_data is None:
+            return min(interval_seconds, self.initial_retry_seconds)
+        return interval_seconds
 
     def _update_loop(self, interval_seconds: int):
         """Background update loop"""
@@ -206,10 +215,14 @@ class WeatherService:
                     self._notify_subscribers(weather_data)
                 else:
                     logger.debug("Weather data unchanged; skipping subscriber notification")
-                time.sleep(interval_seconds)
+                if self._stop_event.wait(interval_seconds):
+                    break
             except Exception as e:
                 logger.error(f"Error in weather update loop: {str(e)}")
-                time.sleep(interval_seconds)
+                retry_delay = self._retry_delay_after_error(interval_seconds)
+                logger.info("Retrying weather update in %ss", retry_delay)
+                if self._stop_event.wait(retry_delay):
+                    break
     
     def _notify_subscribers(self, weather_data: Dict):
         """Notify all subscribers of new weather data"""
@@ -346,7 +359,7 @@ class WeatherService:
             logger.debug(f"Making API request to: {url}")
             logger.debug(f"With parameters: {params}")
             
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=self.request_timeout_seconds)
             response.raise_for_status()
             data = response.json()
             # Transform the data to match our expected format

@@ -6,7 +6,7 @@ from typing import Optional
 from dataclasses import dataclass
 from data import AppData, DataHub, DataKey
 from config.config import config
-from ui.display import Display
+from ui.display import Display, DisplayIntent
 from ui.panes import RenderContext
 from ui.screens import screen_manager
 from ui.key_input import start_digit_listener
@@ -101,7 +101,12 @@ class Runner:
         required = screen_manager.current().requires()
         return [key for key in required if not data.has(key)]
 
-    def _check_display_update(self, force: bool = False, clear: bool = False):
+    def _check_display_update(
+        self,
+        force: bool = False,
+        clear: bool = False,
+        intent: DisplayIntent | None = None,
+    ):
         """Check if we should update the display"""
         now = self.clock.time()
         screen = screen_manager.current()
@@ -124,20 +129,20 @@ class Runner:
         # Always update if this is our first update
         if self.state.last_display_update == 0:
             logger.info("[DISPLAY UPDATE] First update")
-            self._update_display(clear=clear, ctx=ctx)
+            self._update_display(clear=clear, ctx=ctx, intent=intent)
             return
 
         # If forced (screen switch/manual clean redraw), update immediately
         if force:
             logger.info("[DISPLAY UPDATE] Forced update")
-            self._update_display(clear=clear, ctx=ctx)
+            self._update_display(clear=clear, ctx=ctx, intent=intent)
             return
 
         # Clear the display at the top of every hour (aligned to clock time)
         current_time = self.clock.now()
         if (current_time.minute == 0) and (now - self.state.last_display_clear >= 3500):
             logger.info("[DISPLAY UPDATE] Hourly clear")
-            self._update_display(clear=True, ctx=ctx)
+            self._update_display(clear=True, ctx=ctx, intent=DisplayIntent.MAINTENANCE_CLEAR)
             return
 
         prev_ctx = self._previous_render_ctx if self._previous_screen_name == screen_name else None
@@ -157,13 +162,21 @@ class Runner:
         else:
             logger.debug(f"[DISPLAY SKIP] Min interval not met ({time_since_update:.1f}s < {self.min_interval}s)")
     
-    def _update_display(self, clear: bool = False, ctx: Optional[RenderContext] = None):
+    def _update_display(
+        self,
+        clear: bool = False,
+        ctx: Optional[RenderContext] = None,
+        intent: DisplayIntent | None = None,
+    ):
         """Update the display with current state"""
         try:
             if ctx is None:
                 ctx = self._build_render_context()
 
-            partial = not clear
+            display_intent = intent or (
+                DisplayIntent.MAINTENANCE_CLEAR if clear else DisplayIntent.NORMAL
+            )
+            partial = display_intent == DisplayIntent.NORMAL and not clear
             screen_name = screen_manager.current_name()
 
             self.display.update(
@@ -171,7 +184,8 @@ class Runner:
                 now=ctx.now,
                 screen_name=screen_name,
                 partial=partial,
-                clear=clear
+                clear=clear,
+                intent=display_intent,
             )
 
             if (clear == True):
@@ -184,13 +198,16 @@ class Runner:
             logger.error(f"Error updating display: {str(e)}")
 
     def _on_screen_key(self, digit: int):
-        """Switch to the screen mapped to a 1-based number key and force a clean redraw."""
+        """Switch to the screen mapped to a 1-based number key and force a transition redraw."""
         index = digit - 1
         if 0 <= index < screen_manager.count() and screen_manager.select(index):
             logger.info(f"Switched to screen {digit} ({screen_manager.current_name()})")
             self._previous_render_ctx = None
             self._previous_screen_name = None
-            self._check_display_update(force=True, clear=True)
+            self._check_display_update(
+                force=True,
+                intent=DisplayIntent.SCREEN_TRANSITION,
+            )
 
     def run(self):
         """Main run method"""

@@ -56,6 +56,22 @@ Move the current transit-shaped runner state into typed, named app data:
 - No intended visual change, cadence tuning, new screen behavior, or e-ink
   quality work in this phase.
 
+## Phase B3 — Display intent + transition waveforms
+
+Split display updates by intent instead of overloading `clear=True`:
+- Add a display intent model with `normal`, `screen_transition`, and
+  `maintenance_clear`.
+- Screen switches use `screen_transition`: a user-driven full-screen GLR16 update
+  that is allowed through immediately.
+- Hourly anti-ghosting keeps the maintenance path.
+- The post-large-update cooldown suppresses routine `normal` churn after a
+  screen transition or maintenance clear, so a large GLR16 update is not followed
+  immediately by a full-screen DU tick.
+- Keep the current `partial`/`clear` arguments temporarily for compatibility,
+  but treat intent as the source of waveform/cooldown policy.
+- No new pane-level waveform selection yet; this creates the hook for future
+  screen/pane profile fidelity.
+
 ## Phase C — Automated tests
 
 1. **Pixel goldens** (existing): transit unchanged confirms the render path is
@@ -115,10 +131,15 @@ work until the previous phase has passed both environments.
   profile. Transit redraws when the displayed seconds value, top-two trains, or
   subway availability changes. Hello declares no required data and no regular
   redraws.
-- **Phase B2:** CODE COMPLETE, pending local + Pi manual testing. Runner now
-  owns lifecycle/timing/display decisions only; `DataHub` owns feed
-  subscriptions and latest typed `AppData`. `uv run pytest` passes locally
-  (65 passed, 3 skipped).
+- **Phase B2:** COMPLETE. Runner now owns lifecycle/timing/display decisions
+  only; `DataHub` owns feed subscriptions and latest typed `AppData`. Mac and
+  Pi manual gates passed on commit `2d59e8b`.
+- **Operational fixes:** CODE COMPLETE, pending Mac + Pi manual testing. Feed
+  loops now stop promptly, Open-Meteo has a request timeout, and initial weather
+  failures retry quickly instead of waiting a full weather interval.
+- **Phase B3:** CODE COMPLETE, pending Mac + Pi manual testing. Display updates
+  now carry explicit intents so screen transitions are immediate full-screen
+  GLR16 updates, while routine redraws are blocked briefly after large updates.
 - **Phase C:** NOT STARTED. Phase B added guard tests for its own contract and
   runner behavior, but the broader Phase C checklist is gated on D2 local + Pi
   manual testing. Pixel goldens are still transit-only; add the hello golden

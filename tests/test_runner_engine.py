@@ -14,6 +14,7 @@ from data import AppData, DataHub
 from runner import Runner
 from services.citibike_service import BikeAvailability
 from services.subway_service import SubwayResult
+from ui.display import DisplayIntent
 from ui.screens import screen_manager
 
 
@@ -44,11 +45,20 @@ class RecordingDisplay:
     def initialize(self):
         pass
 
-    def update(self, app_data=None, now=None, screen_name=None, partial=False, clear=False):
+    def update(
+        self,
+        app_data=None,
+        now=None,
+        screen_name=None,
+        partial=False,
+        clear=False,
+        intent=None,
+    ):
         self.calls.append({
             "app_data": app_data,
             "partial": partial,
             "clear": clear,
+            "intent": intent,
             "now": now,
             "screen_name": screen_name,
         })
@@ -138,7 +148,8 @@ def test_hello_screen_renders_without_transit_data_on_switch():
     assert disp.calls == [{
         "app_data": AppData(),
         "partial": False,
-        "clear": True,
+        "clear": False,
+        "intent": DisplayIntent.SCREEN_TRANSITION,
         "now": runner.clock.now(),
         "screen_name": "hello",
     }]

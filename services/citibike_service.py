@@ -3,7 +3,6 @@ from typing import Optional, Callable
 from dataclasses import dataclass
 import requests
 from config.config import config
-import time
 import threading
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,9 @@ class CitibikeService:
         self._subscribers: list[Callable[[BikeAvailability], None]] = []
         self._update_thread: Optional[threading.Thread] = None
         self._should_run = False
+        self._stop_event = threading.Event()
         self._current_availability: Optional[BikeAvailability] = None
+        self.request_timeout_seconds = 10
     
     def subscribe(self, callback: Callable[[BikeAvailability], None]):
         """Subscribe to bike availability updates"""
@@ -38,6 +39,7 @@ class CitibikeService:
             return
             
         self._should_run = True
+        self._stop_event.clear()
         self._update_thread = threading.Thread(target=self._update_loop, args=(interval_seconds,))
         self._update_thread.daemon = True
         self._update_thread.start()
@@ -46,6 +48,7 @@ class CitibikeService:
     def stop_updates(self):
         """Stop periodic updates"""
         self._should_run = False
+        self._stop_event.set()
         if self._update_thread:
             self._update_thread.join()
             self._update_thread = None
@@ -67,10 +70,12 @@ class CitibikeService:
                 if availability and self._should_notify(availability):
                     self._current_availability = availability
                     self._notify_subscribers(availability)
-                time.sleep(interval_seconds)
+                if self._stop_event.wait(interval_seconds):
+                    break
             except Exception as e:
                 logger.error(f"Error in update loop: {str(e)}")
-                time.sleep(interval_seconds)
+                if self._stop_event.wait(interval_seconds):
+                    break
     
     def _notify_subscribers(self, availability: BikeAvailability):
         """Notify all subscribers of new bike data"""
@@ -89,7 +94,7 @@ class CitibikeService:
             url = "https://gbfs.lyft.com/gbfs/2.3/bkn/en/station_status.json"
             
             headers = {"User-Agent": "simple-e-ink-citibike/1.0"}
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=self.request_timeout_seconds)
             response.raise_for_status()
             
             data = response.json()
@@ -137,4 +142,3 @@ class CitibikeService:
 
 # Create a global citibike service instance
 citibike_service = CitibikeService()
-

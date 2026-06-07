@@ -4,7 +4,6 @@ from typing import List, Optional, Callable
 from dataclasses import dataclass
 from nyct_gtfs import NYCTFeed, Trip
 from config.config import config
-import time
 import threading
 import requests
 
@@ -53,6 +52,7 @@ class SubwayService:
         self._subscribers: List[Callable[[SubwayResult], None]] = []
         self._update_thread: Optional[threading.Thread] = None
         self._should_run = False
+        self._stop_event = threading.Event()
         self._current_result: Optional[SubwayResult] = None
 
     def _fetch_feed(self, line_id: str) -> NYCTFeed:
@@ -77,6 +77,7 @@ class SubwayService:
             return
             
         self._should_run = True
+        self._stop_event.clear()
         self._update_thread = threading.Thread(target=self._update_loop, args=(interval_seconds,))
         self._update_thread.daemon = True
         self._update_thread.start()
@@ -85,6 +86,7 @@ class SubwayService:
     def stop_updates(self):
         """Stop periodic updates"""
         self._should_run = False
+        self._stop_event.set()
         if self._update_thread:
             self._update_thread.join()
             self._update_thread = None
@@ -123,10 +125,12 @@ class SubwayService:
                 self._current_result = new_result
                 if should_notify:
                     self._notify_subscribers(new_result)
-                time.sleep(interval_seconds)
+                if self._stop_event.wait(interval_seconds):
+                    break
             except Exception as e:
                 logger.error(f"Error in update loop: {str(e)}")
-                time.sleep(interval_seconds)
+                if self._stop_event.wait(interval_seconds):
+                    break
 
     def _notify_subscribers(self, result: SubwayResult):
         """Notify all subscribers of new train data"""

@@ -6,6 +6,7 @@ from time import sleep
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from PIL import Image, ImageChops
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,12 @@ if IS_RASPBERRY_PI:
     from IT8951 import constants # type: ignore
 
 
+class DisplayIntent(Enum):
+    NORMAL = "normal"
+    SCREEN_TRANSITION = "screen_transition"
+    MAINTENANCE_CLEAR = "maintenance_clear"
+
+
 @dataclass
 class DisplayFrame:
     image: Image.Image
@@ -35,6 +42,7 @@ class DisplayFrame:
     queued_at: float
     sequence: int
     displayed_clock: str
+    intent: DisplayIntent = DisplayIntent.NORMAL
     overwritten_before_consume: int = 0
 
 
@@ -58,6 +66,14 @@ def _displayed_clock(now: Optional[datetime]) -> str:
     if now is None:
         return ""
     return now.strftime("%I:%M:%S%p").lstrip("0").lower()
+
+
+def _coerce_intent(intent: DisplayIntent | str | None, clear: bool) -> DisplayIntent:
+    if intent is None:
+        return DisplayIntent.MAINTENANCE_CLEAR if clear else DisplayIntent.NORMAL
+    if isinstance(intent, DisplayIntent):
+        return intent
+    return DisplayIntent(intent)
 
 
 class DebugDisplay:
@@ -134,6 +150,7 @@ class DebugDisplay:
             "frame_path",
             "screen_name",
             "displayed_clock",
+            "intent",
             "partial",
             "clear",
             "render_requested_at",
@@ -147,6 +164,7 @@ class DebugDisplay:
             "frame_path": str(frame_path),
             "screen_name": metadata.screen_name if metadata else "",
             "displayed_clock": metadata.displayed_clock if metadata else "",
+            "intent": metadata.intent.value if metadata else "",
             "partial": metadata.partial if metadata else "",
             "clear": metadata.clear if metadata else "",
             "render_requested_at": (
@@ -203,20 +221,30 @@ class EInkDisplay:
         sleep(2)
         logger.error("Display restarted")
     
-    def _update_display(self, img: Image.Image, clear: bool = False):
+    def _update_display(
+        self,
+        img: Image.Image,
+        clear: bool = False,
+        intent: DisplayIntent = DisplayIntent.NORMAL,
+    ):
         """Update the e-ink display using IT8951"""
         try:
-            if clear:
+            if intent in {DisplayIntent.SCREEN_TRANSITION, DisplayIntent.MAINTENANCE_CLEAR} or clear:
                 waveform = constants.DisplayModes.GLR16
             else:
                 waveform = constants.DisplayModes.DU
 
             start = time.monotonic()
-            logger.info("Sending image to display (waveform=%s)", waveform)
+            logger.info("Sending image to display (waveform=%s, intent=%s)", waveform, intent.value)
             self.display.frame_buf.paste(img)
             self.display.draw_full(waveform)
             duration = time.monotonic() - start
-            logger.info("Display update complete (duration=%.3fs, waveform=%s)", duration, waveform)
+            logger.info(
+                "Display update complete (duration=%.3fs, waveform=%s, intent=%s)",
+                duration,
+                waveform,
+                intent.value,
+            )
             
         except Exception as e:
             print(f"Error updating display: {str(e)}")
@@ -260,15 +288,22 @@ class EInkDisplay:
         try:
             if metadata is not None:
                 logger.info(
-                    "Consuming display frame sequence=%s screen=%s clock=%s queue_wait=%.3fs overwritten=%s partial=%s clear=%s",
+                    "Consuming display frame sequence=%s screen=%s clock=%s intent=%s queue_wait=%.3fs overwritten=%s partial=%s clear=%s",
                     metadata.sequence,
                     metadata.screen_name,
                     metadata.displayed_clock,
+                    metadata.intent.value,
                     time.time() - metadata.queued_at,
                     metadata.overwritten_before_consume,
                     partial,
                     clear,
                 )
+            intent = metadata.intent if metadata else DisplayIntent.MAINTENANCE_CLEAR if clear else DisplayIntent.NORMAL
+            if intent in {DisplayIntent.SCREEN_TRANSITION, DisplayIntent.MAINTENANCE_CLEAR}:
+                self._update_display(img, clear, intent)
+                self.previous_image = img
+                return
+
             if self.previous_image:
                 diff_box = self._get_diff_box(self.previous_image, img)
             else:
@@ -289,7 +324,7 @@ class EInkDisplay:
             if partial and diff_box:
                 self._update_partial_display(img, diff_box)
             else:
-                self._update_display(img, clear)
+                self._update_display(img, clear, intent)
             
             self.previous_image = img
                 
@@ -303,8 +338,7 @@ class Display:
         self.display = None
         self.next_frame = None
         self.clear_cooldown_seconds = config.timing.DISPLAY_CLEAR_COOLDOWN_SECONDS
-        self._last_clear_time = 0
-        self._pending_clear = False
+        self._large_update_cooldown_until = 0
         self._queue_lock = threading.Lock()
         self._frame_sequence = 0
         self._pending_overwrite_count = 0
@@ -332,16 +366,10 @@ class Display:
                 frame = self._take_next_frame(now)
 
                 if frame is not None:
-                    if self._pending_clear:
-                        self.display.update(frame.image, frame.partial, frame.clear, frame)
-                        self._pending_clear = False
-                        if frame.clear:
-                            self._last_clear_time = time.time()
-                    else:
-                        self.display.update(frame.image, frame.partial, frame.clear, frame)
-                        if frame.clear:
-                            self._last_clear_time = time.time()
-                            self._pending_clear = True
+                    self.display.update(frame.image, frame.partial, frame.clear, frame)
+                    if self._starts_large_update_cooldown(frame):
+                        with self._queue_lock:
+                            self._large_update_cooldown_until = time.time() + self.clear_cooldown_seconds
                 time.sleep(1)  # Ensure only one update per second
             except Exception as e:
                 logger.error(f"Error processing update queue: {str(e)}")
@@ -351,7 +379,10 @@ class Display:
         with self._queue_lock:
             if self.next_frame is None:
                 return None
-            if self._pending_clear and (now - self._last_clear_time) < self.clear_cooldown_seconds:
+            if (
+                self.next_frame.intent == DisplayIntent.NORMAL
+                and now < self._large_update_cooldown_until
+            ):
                 return None
 
             frame = self.next_frame
@@ -360,6 +391,12 @@ class Display:
             self._pending_overwrite_count = 0
             return frame
 
+    def _starts_large_update_cooldown(self, frame: DisplayFrame) -> bool:
+        return frame.intent in {
+            DisplayIntent.SCREEN_TRANSITION,
+            DisplayIntent.MAINTENANCE_CLEAR,
+        }
+
     def update(
         self,
         app_data: AppData,
@@ -367,10 +404,12 @@ class Display:
         screen_name: Optional[str] = None,
         partial: bool = False,
         clear: bool = False,
+        intent: DisplayIntent | str | None = None,
     ):
         """Queue an update for the display with new data"""
         try:
             logger.info("Generating display image...")
+            display_intent = _coerce_intent(intent, clear)
             img = getImageFromAppData(
                 app_data,
                 now=now,
@@ -388,6 +427,7 @@ class Display:
                     queued_at=queued_at,
                     sequence=self._frame_sequence,
                     displayed_clock=_displayed_clock(now),
+                    intent=display_intent,
                 )
                 if self.next_frame is not None:
                     self._pending_overwrite_count += 1
