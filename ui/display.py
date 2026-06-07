@@ -166,6 +166,7 @@ class DebugDisplay:
             "queue_wait_seconds",
             "overwritten_before_consume",
         ]
+        write_header = self._prepare_manifest_for_append(fieldnames)
         row = {
             "sequence": metadata.sequence if metadata else "",
             "frame_path": str(frame_path),
@@ -186,12 +187,43 @@ class DebugDisplay:
             ),
             "overwritten_before_consume": metadata.overwritten_before_consume if metadata else "",
         }
-        write_header = not self.manifest_path.exists()
         with self.manifest_path.open("a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
                 writer.writeheader()
             writer.writerow(row)
+
+    def _prepare_manifest_for_append(self, fieldnames: list[str]) -> bool:
+        if not self.manifest_path.exists() or self.manifest_path.stat().st_size == 0:
+            return True
+
+        with self.manifest_path.open(newline="") as f:
+            reader = csv.reader(f)
+            existing_header = next(reader, None)
+
+        if existing_header == fieldnames:
+            return False
+
+        rotated_path = self._rotated_manifest_path()
+        self.manifest_path.rename(rotated_path)
+        logger.warning(
+            "Rotated debug frame manifest with stale schema to %s",
+            rotated_path,
+        )
+        return True
+
+    def _rotated_manifest_path(self) -> Path:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        candidate = self.manifest_path.with_name(
+            f"{self.manifest_path.stem}.{timestamp}{self.manifest_path.suffix}"
+        )
+        counter = 1
+        while candidate.exists():
+            candidate = self.manifest_path.with_name(
+                f"{self.manifest_path.stem}.{timestamp}.{counter}{self.manifest_path.suffix}"
+            )
+            counter += 1
+        return candidate
 
 class EInkDisplay:
     def __init__(self):

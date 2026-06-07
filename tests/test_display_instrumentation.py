@@ -56,6 +56,37 @@ def test_debug_display_history_writes_timestamped_frame_and_manifest(tmp_path):
     }]
 
 
+def test_debug_display_rotates_manifest_when_existing_schema_is_stale(tmp_path):
+    old_manifest = tmp_path / "frame_manifest.csv"
+    old_contents = "sequence,frame_path\n1,old.png\n"
+    old_manifest.write_text(old_contents)
+
+    debug = DebugDisplay(output_dir=tmp_path, history_enabled=True)
+    metadata = DisplayFrame(
+        image=_image(),
+        partial=False,
+        clear=False,
+        screen_name="hello",
+        render_requested_at=datetime(2026, 1, 15, 14, 23, 5),
+        queued_at=time.time(),
+        sequence=8,
+        displayed_clock="2:23:05pm",
+    )
+
+    debug.update(_image(), metadata=metadata)
+
+    rotated = list(tmp_path.glob("frame_manifest.*.csv"))
+    assert len(rotated) == 1
+    assert rotated[0].read_text() == old_contents
+
+    with old_manifest.open() as f:
+        rows = list(csv.DictReader(f))
+
+    assert rows[0]["sequence"] == "8"
+    assert rows[0]["screen_name"] == "hello"
+    assert rows[0]["intent"] == "normal"
+
+
 def test_display_queue_records_overwritten_frames(monkeypatch):
     display = _display_without_thread()
 

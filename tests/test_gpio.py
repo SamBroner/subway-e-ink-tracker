@@ -7,10 +7,12 @@ spidev = pytest.importorskip(
 import time
 
 def test_spi():
+    # Open SPI bus 0, device 0
+    spi = spidev.SpiDev()
+    opened = False
     try:
-        # Open SPI bus 0, device 0
-        spi = spidev.SpiDev()
         spi.open(0, 0)
+        opened = True
         
         # Configure SPI settings
         spi.max_speed_hz = 4000000
@@ -23,12 +25,12 @@ def test_spi():
         result = spi.xfer2(test_data)
         print(f"Sent data: {test_data}")
         print(f"Received data: {result}")
+        assert len(result) == len(test_data)
         
-        spi.close()
         print("SPI test completed")
-        
-    except Exception as e:
-        print(f"SPI Error: {e}")
+    finally:
+        if opened:
+            spi.close()
 
 if __name__ == "__main__":
     test_spi()

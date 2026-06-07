@@ -5,10 +5,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Force reload environment variables. Load the .env that sits next to this file
-# (config/.env) explicitly, so it resolves regardless of the current working
-# directory — the package layout keeps config.py and .env in the config/ package.
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), override=True)
+# Load the .env that sits next to this file (config/.env) explicitly, so it
+# resolves regardless of the current working directory. Shell-provided
+# environment variables take precedence over file values for one-off smoke runs.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'), override=False)
 
 @dataclass
 class DisplayConfig:
