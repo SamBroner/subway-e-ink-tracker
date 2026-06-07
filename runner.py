@@ -10,6 +10,8 @@ from services.weather_service import weather_service
 from services.citibike_service import citibike_service, BikeAvailability
 from config.config import config
 from ui.display import Display
+from ui.screens import screen_manager
+from ui.key_input import start_digit_listener
 import logging
 import logging.handlers
 
@@ -51,10 +53,24 @@ class DisplayState:
     last_display_update: float = 0
     last_display_clear: float = 0
 
+
+class Clock:
+    """Time source for the runner's scheduling; injectable so tests can drive the
+    decision logic deterministically. The real clock preserves prior behavior
+    exactly: time.time() for intervals, datetime.now() for the hourly check.
+    """
+    def time(self) -> float:
+        return time.time()
+
+    def now(self) -> datetime:
+        return datetime.now()
+
+
 class Runner:
-    def __init__(self):
+    def __init__(self, display=None, clock: "Clock" = None):
         logger.info("Initializing Runner")
-        self.display = Display()
+        self.display = display if display is not None else Display()
+        self.clock = clock if clock is not None else Clock()
         self.state = DisplayState()
         self.min_interval = config.timing.DISPLAY_MIN_INTERVAL_SECONDS
         self._previous_top_trains: tuple[Optional[TrainArrival], Optional[TrainArrival]] = (None, None)
@@ -67,7 +83,7 @@ class Runner:
     
     def handle_train_update(self, result: SubwayResult):
         """Handle incoming train updates"""
-        now = datetime.now()
+        now = self.clock.now()
         trains = result.trains
         logger.info("-" * 40)
         logger.info(f"Train update at {now.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -123,7 +139,7 @@ class Runner:
     
     def _check_display_update(self, force: bool = False):
         """Check if we should update the display"""
-        now = time.time()
+        now = self.clock.time()
 
         # Don't update if we don't have essential data (bike data is optional)
         if not self.state.weather_data or self.state.train_data is None:
@@ -147,7 +163,7 @@ class Runner:
             return
 
         # Clear the display at the top of every hour (aligned to clock time)
-        current_time = datetime.now()
+        current_time = self.clock.now()
         if (current_time.minute == 0) and (now - self.state.last_display_clear >= 3500):
             logger.info("[DISPLAY UPDATE] Hourly clear")
             self._update_display(True)
@@ -179,15 +195,22 @@ class Runner:
             )
 
             if (clear == True):
-                self.state.last_display_clear = time.time()
+                self.state.last_display_clear = self.clock.time()
 
-            self.state.last_display_update = time.time()
+            self.state.last_display_update = self.clock.time()
             # Update the previous top trains after updating the display
             self._previous_top_trains = self._get_top_two_trains(self.state.train_data)
             self._previous_subway_unavailable = self.state.subway_unavailable
         except Exception as e:
             logger.error(f"Error updating display: {str(e)}")
-    
+
+    def _on_screen_key(self, digit: int):
+        """Switch to the screen mapped to a 1-based number key and force a clean redraw."""
+        index = digit - 1
+        if 0 <= index < screen_manager.count() and screen_manager.select(index):
+            logger.info(f"Switched to screen {digit} ({screen_manager.current_name()})")
+            self._update_display(clear=True)
+
     def run(self):
         """Main run method"""
         try:
@@ -205,7 +228,16 @@ class Runner:
             weather_service.start_updates(interval_seconds=config.timing.WEATHER_UPDATE_SECONDS)
             subway_service.start_updates(interval_seconds=config.timing.SUBWAY_UPDATE_SECONDS)
             citibike_service.start_updates(interval_seconds=config.timing.CITIBIKE_UPDATE_SECONDS)
-            
+
+            # Interactive screen switching: press 1..N to switch screens.
+            # No-ops when there's no tty (e.g. running as a systemd service).
+            if start_digit_listener(self._on_screen_key):
+                logger.info(
+                    "Screen switching enabled: press %s (%s)",
+                    "/".join(str(i + 1) for i in range(screen_manager.count())),
+                    ", ".join(screen_manager.names()),
+                )
+
             # Keep the main thread running
             try:
                 while True:
