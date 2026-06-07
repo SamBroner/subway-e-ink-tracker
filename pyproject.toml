@@ -15,7 +15,8 @@ dependencies = [
     "pytz>=2024.2",
     "requests>=2.32.3",
     "IT8951 @ git+https://github.com/GregDMeyer/IT8951; sys_platform == 'linux'",
-    "rpi-gpio>=0.7.1; sys_platform == 'linux'"
+    "rpi-gpio>=0.7.1; sys_platform == 'linux'",
+    "spidev>=3.6; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
