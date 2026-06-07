@@ -20,6 +20,7 @@ side-by-side inspection.
 
 import os
 from pathlib import Path
+import sys
 
 import pytest
 from PIL import Image, ImageChops
@@ -29,6 +30,8 @@ from tests.golden.fixtures import FIXED_NOW
 from tests.golden.scenarios import all_scenarios, Scenario
 
 GOLDEN_DIR = Path(__file__).parent / "golden_views"
+REFERENCE_PLATFORM = "darwin"
+RUN_PLATFORM_GOLDENS = os.environ.get("RUN_PLATFORM_GOLDENS") == "1"
 
 
 def render_scenario(scenario: Scenario) -> Image.Image:
@@ -54,6 +57,12 @@ def write_golden(scenario: Scenario) -> Path:
 
 @pytest.mark.parametrize("scenario", all_scenarios(), ids=lambda s: s[0])
 def test_golden_view(scenario: Scenario):
+    if sys.platform != REFERENCE_PLATFORM and not RUN_PLATFORM_GOLDENS:
+        pytest.skip(
+            "pixel-exact goldens are validated on the macOS reference renderer; "
+            "set RUN_PLATFORM_GOLDENS=1 to run them on this platform"
+        )
+
     name = scenario[0]
     rendered = render_scenario(scenario)
 

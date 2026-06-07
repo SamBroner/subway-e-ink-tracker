@@ -1,12 +1,35 @@
 import pytest
+import sys
+from pathlib import Path
 
-spidev = pytest.importorskip(
-    "spidev",
-    reason="Pi-only SPI library is unavailable",
-)
-import time
+try:
+    import spidev
+except ImportError as e:
+    spidev = None
+    SPIDEV_IMPORT_ERROR = e
+else:
+    SPIDEV_IMPORT_ERROR = None
+
+
+def _is_raspberry_pi() -> bool:
+    if sys.platform != "linux":
+        return False
+    model_path = Path("/proc/device-tree/model")
+    try:
+        return "raspberry pi" in model_path.read_text(errors="ignore").lower()
+    except OSError:
+        return False
 
 def test_spi():
+    if spidev is None:
+        if _is_raspberry_pi():
+            pytest.fail(
+                "spidev is not importable on this Raspberry Pi; install it in "
+                "the active Python environment before running the SPI gate",
+                pytrace=False,
+            )
+        pytest.skip("Pi-only SPI library is unavailable")
+
     # Open SPI bus 0, device 0
     spi = spidev.SpiDev()
     opened = False
