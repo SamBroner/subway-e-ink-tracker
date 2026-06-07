@@ -1,46 +1,26 @@
-from PIL import Image
 from datetime import datetime
-from typing import List
+from typing import List, Optional
+
+from PIL import Image
 
 import clock
-from config.config import config
-from ui.panes import (
-    RenderContext,
-    DatePane,
-    SubwayPane,
-    HourlyWeatherPane,
-    CitibikePane,
-    WeatherOverviewPane,
-)
-from ui.screen import Screen
+from ui.panes import RenderContext
+from ui.screens import screen_manager
 from services.subway_service import TrainArrival
 from services.citibike_service import BikeAvailability
 
 
-def _build_screen() -> Screen:
-    """Compose the panes that tile the display, with rects from config."""
-    d = config.display
-    panes = [
-        DatePane((0, 0, d.WIDTH, d.HEADER_HEIGHT)),
-        SubwayPane((0, d.TRAIN_SECTION_Y, d.MAIN_SECTION_WIDTH, d.TRAIN_SECTION_HEIGHT)),
-        HourlyWeatherPane((d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y, d.VERTICAL_LANE_WIDTH, d.TRAIN_SECTION_HEIGHT)),
-        CitibikePane((0, d.WEATHER_SECTION_Y, d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
-        WeatherOverviewPane((d.BOTTOM_VERTICAL_OFFSET, d.WEATHER_SECTION_Y, d.WIDTH - d.BOTTOM_VERTICAL_OFFSET, d.BOTTOM_SECTION_HEIGHT)),
-    ]
-    return Screen(panes)
-
-
-_screen = _build_screen()
-
-
 # Provide single image creation function
-def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None, now: datetime = None, subway_unavailable: bool = False) -> Image.Image:
-    """Render the full display.
+def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: BikeAvailability = None,
+             now: datetime = None, subway_unavailable: bool = False,
+             screen_name: Optional[str] = None) -> Image.Image:
+    """Render the active screen (or a named one) to a display-ready image.
 
-    Builds a per-frame RenderContext and delegates composition to the Screen.
-    ``now`` defaults to clock.now() so production callers need not pass it;
-    tests pass a fixed instant to render deterministically. ``subway_unavailable``
-    distinguishes unreachable train feeds from an empty (but reachable) result.
+    Builds a per-frame RenderContext shared by every pane. ``now`` defaults to
+    clock.now() so production callers need not pass it; tests pass a fixed instant.
+    ``screen_name`` forces a specific registered screen (used by tests); otherwise
+    the ScreenManager's current screen is rendered, so runtime screen switches are
+    reflected here.
     """
     if now is None:
         now = clock.now()
@@ -51,4 +31,5 @@ def getImage(weather_data: dict, subway_data: List[TrainArrival], bike_data: Bik
         now=now,
         subway_unavailable=subway_unavailable,
     )
-    return _screen.render(ctx)
+    screen = screen_manager.get(screen_name) if screen_name else screen_manager.current()
+    return screen.render(ctx)

@@ -138,7 +138,13 @@ class EInkDisplay:
                 diff_box = self._get_diff_box(self.previous_image, img)
             else:
                 diff_box = None
-            
+
+            # Nothing changed since the last frame (and not an explicit clear):
+            # skip the repaint, so a static screen doesn't full-refresh every tick.
+            # (Checked before the large-diff escalation below, which also nulls diff_box.)
+            if self.previous_image and diff_box is None and not clear:
+                return
+
             # Fix - maybe have the partial boolean parameter be tuple of max width/height"
             if diff_box and (diff_box[2] - diff_box[0] > 50 or diff_box[3] - diff_box[1] > 50):
                 logger.info("Large diff detected, doing full update")

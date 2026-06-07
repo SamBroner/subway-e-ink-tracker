@@ -1,11 +1,12 @@
 """A screen: the ordered set of panes that fill the display.
 
-`Screen.render` builds the blank frame, renders each pane into it, draws the
-chrome (the section dividers that span panes) on top, and applies the 180°
-rotation for the panel's physical orientation.
+`Screen.render` builds the blank frame, renders each pane into it, optionally
+draws cross-pane chrome (e.g. section dividers) on top, and applies the 180°
+rotation for the panel's physical orientation. Chrome is per-screen: a screen
+with no dividers (e.g. a full-bleed hello screen) simply passes none.
 """
 
-from typing import List
+from typing import Callable, List, Optional
 
 from PIL import Image, ImageDraw
 
@@ -14,38 +15,21 @@ from ui.panes import Pane, RenderContext
 
 
 class Screen:
-    def __init__(self, panes: List[Pane]):
+    def __init__(self, panes: List[Pane], chrome: Optional[Callable[[ImageDraw.ImageDraw], None]] = None):
         self.panes = panes
+        # Optional callable(draw) for cross-pane chrome, drawn on top of the panes.
+        self.chrome = chrome
 
     def render(self, ctx: RenderContext) -> Image.Image:
         d = config.display
         img = Image.new('L', (d.WIDTH, d.HEIGHT), 255)
         draw = ImageDraw.Draw(img)
 
-        # Panes first, then chrome on top: panes paste opaque tiles, so the
-        # chrome must be drawn last or the dividers at pane boundaries would be
-        # overwritten.
+        # Panes first, then chrome on top — panes paste opaque tiles, so chrome
+        # drawn last keeps the boundary dividers from being overwritten.
         for pane in self.panes:
             pane.render(img, ctx)
-        self._draw_chrome(draw)
+        if self.chrome is not None:
+            self.chrome(draw)
 
         return img.rotate(180)
-
-    def _draw_chrome(self, draw: ImageDraw.ImageDraw) -> None:
-        """Draw the section dividers that separate the panes."""
-        d = config.display
-
-        # Line between header and train section
-        draw.line((0, d.HEADER_HEIGHT, d.WIDTH, d.HEADER_HEIGHT), fill=0)
-
-        # Line between train and weather section - full width
-        bottom_divider_y = d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT
-        draw.line((0, bottom_divider_y, d.WIDTH, bottom_divider_y), fill=0)
-
-        # Vertical line for the right (hourly) lane
-        draw.line((d.VERTICAL_LANE_X, d.HEADER_HEIGHT,
-                   d.VERTICAL_LANE_X, d.TRAIN_SECTION_Y + d.TRAIN_SECTION_HEIGHT), fill=0)
-
-        # Vertical line splitting the bottom section (bikes | weather)
-        bottom_vertical_x = d.BOTTOM_VERTICAL_OFFSET
-        draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)
