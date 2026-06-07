@@ -105,6 +105,9 @@ def test_first_update_renders():
     assert len(disp.calls) == 1
     assert disp.calls[0]["screen_name"] == "transit"
     assert disp.calls[0]["app_data"].bikes is None
+    assert disp.calls[0]["partial"] is False
+    assert disp.calls[0]["clear"] is False
+    assert disp.calls[0]["intent"] == DisplayIntent.SCREEN_TRANSITION
 
 
 def test_min_interval_throttles():

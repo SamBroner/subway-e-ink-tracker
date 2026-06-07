@@ -127,40 +127,31 @@ work until the previous phase has passed both environments.
   is also mirrored in the session task list.
 - **Phase A:** COMPLETE. Runner timing now has an injected clock and the runner
   decision path is covered by a recording fake display.
-- **Phase B:** CODE COMPLETE, pending D2 manual testing. `Screen` now owns
-  `requires()`, `should_redraw(ctx, prev_ctx)`, and a lightweight display
-  profile. Transit redraws when the displayed seconds value, top-two trains, or
-  subway availability changes. Hello declares no required data and no regular
-  redraws.
+- **Phase B:** COMPLETE. `Screen` now owns `requires()`,
+  `should_redraw(ctx, prev_ctx)`, and a lightweight display profile. Transit
+  redraws when the displayed seconds value, top-two trains, or subway
+  availability changes. Hello declares no required data and no regular redraws.
 - **Phase B2:** COMPLETE. Runner now owns lifecycle/timing/display decisions
   only; `DataHub` owns feed subscriptions and latest typed `AppData`. Mac and
   Pi manual gates passed on commit `2d59e8b`.
-- **Operational fixes:** CODE COMPLETE, pending Mac + Pi manual testing. Feed
-  loops now stop promptly, Open-Meteo has a request timeout, and initial weather
-  failures retry quickly instead of waiting a full weather interval.
-- **Phase B3:** CODE COMPLETE, pending Mac + Pi manual testing. Display updates
-  now carry explicit intents so screen transitions are immediate full-screen
-  GLR16 updates, while routine redraws are blocked briefly after large updates.
-- **Input/wake follow-up:** CODE COMPLETE, pending Mac + Pi manual testing.
-  Interactive input is now a debounced spacebar/capacitive-button-style
-  "advance screen" action, and the display slot wakes immediately while
-  remaining latest-wins rather than FIFO.
-- **Bird screens:** CODE COMPLETE, pending Mac + Pi manual testing. Five
-  full-screen static bird image screens are registered after hello in the
-  spacebar cycle.
+- **Operational fixes:** COMPLETE. Feed loops now stop promptly, Open-Meteo has
+  a request timeout, and initial weather failures retry quickly instead of
+  waiting a full weather interval.
+- **Phase B3:** COMPLETE. Display updates now carry explicit intents so startup
+  content and screen transitions are full-screen GLR16 updates, while routine
+  redraws are blocked briefly after large updates.
+- **Input/wake follow-up:** COMPLETE. Interactive input is now a debounced
+  spacebar/capacitive-button-style "advance screen" action, and the display
+  slot wakes immediately while remaining latest-wins rather than FIFO.
+- **Bird screens:** COMPLETE. Five full-screen static bird image screens are
+  registered after hello in the spacebar cycle.
 - **Phase C:** NOT STARTED. Phase B added guard tests for its own contract and
   runner behavior, but the broader Phase C checklist is gated on D2 local + Pi
   manual testing. Pixel goldens are still transit-only; add the hello golden
   only after D2 passes.
-- **Pi timing note:** After Phase A, the physical panel showed skipped seconds
-  (example: 25, 27, 31, 34, 35, 36, 37, 38, 40) rather than a steady 1 Hz
-  cadence. That matches the current display pipeline: the runner can generate a
-  frame every second, but the async display queue keeps only the latest pending
-  frame and the IT8951 update can take longer than one second. Phase B preserves
-  transit's requested every-displayed-second redraw behavior, while preventing
-  static screens from churning. Next e-ink quality work should decide whether to
-  remove seconds, update only the seconds glyph, or instrument actual panel
-  update latency before tuning cadence.
+- **Pi timing note:** Seconds remain intentionally enabled. The Pi manual pass
+  showed the seconds presentation looks good with the current intent/cooldown
+  pipeline, while static screens do not churn.
 - **Debug timing instrumentation:** `DEBUG_FRAME_HISTORY=true` keeps
   `debug_output/current_display.png` behavior and also saves timestamped frames
   to `debug_output/frames/` with per-frame queue timing in

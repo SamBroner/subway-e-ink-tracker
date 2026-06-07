@@ -129,7 +129,8 @@ class Runner:
         # Always update if this is our first update
         if self.state.last_display_update == 0:
             logger.info("[DISPLAY UPDATE] First update")
-            self._update_display(clear=clear, ctx=ctx, intent=intent)
+            first_update_intent = intent or DisplayIntent.SCREEN_TRANSITION
+            self._update_display(clear=clear, ctx=ctx, intent=first_update_intent)
             return
 
         # If forced (screen switch/manual clean redraw), update immediately
