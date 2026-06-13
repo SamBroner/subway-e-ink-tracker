@@ -144,7 +144,7 @@ SELECT
   MAX(Date || ' ' || Time) AS last_seen,
   MAX(Confidence) AS max_confidence
 FROM detections
-WHERE datetime(Date || ' ' || Time) >= datetime('now', '-{window_hours} hours')
+WHERE datetime(Date || ' ' || Time) >= datetime('now', 'localtime', '-{window_hours} hours')
 GROUP BY Sci_Name, Com_Name
 ORDER BY last_seen DESC, count DESC
 LIMIT {limit};

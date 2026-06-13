@@ -116,6 +116,15 @@ def test_bird_summary_query_orders_by_recency_first(monkeypatch):
     assert "ORDER BY count DESC" not in query
 
 
+def test_bird_summary_query_uses_sensor_localtime_window(monkeypatch):
+    monkeypatch.setattr("services.bird_service.config.BIRD_WINDOW_HOURS", 24)
+    service = BirdService()
+
+    query = service._summary_query()
+
+    assert "datetime('now', 'localtime', '-24 hours')" in query
+
+
 def test_bird_service_parses_ssh_sqlite_json(monkeypatch):
     service = BirdService()
     service.ssh_host = "birdnet"
