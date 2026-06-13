@@ -88,6 +88,13 @@ class Runner:
                 logger.debug(f"Train: {train.arrival_time} ({train.minutes_until_arrival} min)")
         elif key == "bikes" and data.bikes is not None:
             logger.info(f"Bike update: {data.bikes.classic_bikes} classic, {data.bikes.ebikes} ebikes")
+        elif key == "birds" and data.birds is not None:
+            logger.info(
+                "Bird update: %s observations over %sh (source_unavailable=%s)",
+                len(data.birds.observations),
+                data.birds.window_hours,
+                data.birds.source_unavailable,
+            )
 
         self._check_display_update(force=False)
     
@@ -158,7 +165,14 @@ class Runner:
             logger.info(
                 f"[DISPLAY UPDATE] {screen_name} redraw ({time_since_update:.1f}s >= {self.min_interval}s)"
             )
-            self._update_display(ctx=ctx)
+            if screen_name in {"bird-collage", "bird-collage-named"}:
+                self._update_display(
+                    clear=True,
+                    ctx=ctx,
+                    intent=DisplayIntent.MAINTENANCE_CLEAR,
+                )
+            else:
+                self._update_display(ctx=ctx)
             return
         else:
             logger.debug(f"[DISPLAY SKIP] Min interval not met ({time_since_update:.1f}s < {self.min_interval}s)")
@@ -180,7 +194,7 @@ class Runner:
             partial = display_intent == DisplayIntent.NORMAL and not clear
             screen_name = screen_manager.current_name()
 
-            self.display.update(
+            queued = self.display.update(
                 app_data=ctx.data,
                 now=ctx.now,
                 screen_name=screen_name,
@@ -188,6 +202,10 @@ class Runner:
                 clear=clear,
                 intent=display_intent,
             )
+            if queued is not False:
+                self._prewarm_screen_renders(ctx, screen_name)
+            else:
+                return
 
             if (clear == True):
                 self.state.last_display_clear = self.clock.time()
@@ -197,6 +215,33 @@ class Runner:
             self._previous_screen_name = screen_name
         except Exception as e:
             logger.error(f"Error updating display: {str(e)}")
+
+    def _prewarm_screen_renders(self, ctx: RenderContext, current_screen_name: str) -> None:
+        prewarm = getattr(self.display, "prewarm", None)
+        if prewarm is None:
+            return
+
+        screen_names = self._prewarm_screen_order(current_screen_name, ctx.data)
+        if not screen_names:
+            return
+        prewarm(ctx.data, ctx.now, screen_names)
+
+    def _prewarm_screen_order(self, current_screen_name: str, data: AppData) -> list[str]:
+        names = screen_manager.names()
+        if current_screen_name not in names:
+            return []
+
+        current_index = names.index(current_screen_name)
+        ordered = names[current_index + 1:] + names[:current_index]
+        return [
+            name
+            for name in ordered
+            if self._screen_has_required_data(name, data)
+        ]
+
+    def _screen_has_required_data(self, screen_name: str, data: AppData) -> bool:
+        required = screen_manager.get(screen_name).requires()
+        return all(data.has(key) for key in required)
 
     def _advance_screen(self):
         """Advance to the next registered screen and force a transition redraw."""

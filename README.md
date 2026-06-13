@@ -7,6 +7,7 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Real-time subway arrival times (NYCT GTFS feeds — no API key)
 - Current Citi Bike availability for a station (GBFS feeds — no API key)
 - Current weather and hourly/daily forecast (Open-Meteo — no API key)
+- BirdNET-Pi observation and collage screens fetched over SSH from a remote SQLite database
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
@@ -63,6 +64,14 @@ local). Copy `config/.env.template` and fill it in:
 | `CITIBIKE_STATION_ID` | yes | Citi Bike station UUID (see below) |
 | `CITIBIKE_STATION_NAME` | yes | Display name for the bike station |
 | `WEATHER_LAT`, `WEATHER_LON` | no | Coordinates (defaults to NYC center) |
+| `BIRDNET_SSH_HOST` | no | SSH host alias for the BirdNET-Pi sensor (defaults to `birdnet`) |
+| `BIRDNET_DB_PATH` | no | Remote BirdNET-Pi SQLite path (defaults to `~/BirdNET-Pi/scripts/birds.db`) |
+| `BIRD_WINDOW_HOURS` | no | Observation summary window for the bird screen (defaults to `24`) |
+| `BIRD_RESULT_LIMIT` | no | Max grouped species returned by the bird feed (defaults to `15`) |
+| `BIRD_UPDATE_SECONDS` | no | Bird feed refresh interval (defaults to `900`) |
+| `BIRD_ASSET_DIR` | no | Local bird illustration directory |
+| `BIRD_MOCK_DATA` | no | Local mock bird result JSON for debug rendering |
+| `BIRD_USE_MOCK_DATA` | no | `true` makes the bird service read `BIRD_MOCK_DATA` instead of SSH |
 | `DEBUG` | no | `true` saves a render to `debug_output/` instead of driving the display |
 | `DEBUG_FRAME_HISTORY` | no | `true` also saves timestamped debug frames and `debug_output/frame_manifest.csv` |
 | `QUIET_MODE` | no | `true` suppresses console output |
@@ -88,6 +97,16 @@ If `DEBUG=false`:
 To run:
 ```bash
 uv run runner.py
+```
+
+Screen switching cycles through:
+
+```text
+transit
+bird-collage
+bird-collage-named
+birds
+bird-profile
 ```
 
 ## Physical Build
