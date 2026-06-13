@@ -10,6 +10,7 @@ from ui.display import Display, DisplayIntent
 from ui.panes import RenderContext
 from ui.screens import screen_manager
 from ui.key_input import start_spacebar_listener
+from ui.touch_input import start_touch_listener
 import logging
 import logging.handlers
 
@@ -254,6 +255,25 @@ class Runner:
                 intent=DisplayIntent.SCREEN_TRANSITION,
             )
 
+    def _start_input_listeners(self) -> None:
+        # Interactive screen switching: press space to advance screens.
+        # No-ops when there's no tty (e.g. running as a systemd service).
+        if start_spacebar_listener(self._advance_screen):
+            logger.info(
+                "Screen switching enabled: press Space to cycle screens (%s)",
+                ", ".join(screen_manager.names()),
+            )
+        if config.TOUCH_ENABLED and start_touch_listener(
+            self._advance_screen,
+            channel=config.TOUCH_CHANNEL,
+            address=config.TOUCH_I2C_ADDRESS,
+        ):
+            logger.info(
+                "MPR121 touch screen switching enabled on channel %s at address 0x%02x",
+                config.TOUCH_CHANNEL,
+                config.TOUCH_I2C_ADDRESS,
+            )
+
     def run(self):
         """Main run method"""
         try:
@@ -265,13 +285,7 @@ class Runner:
             # Subscribe to and start all data feeds.
             self.data_hub.start()
 
-            # Interactive screen switching: press space to advance screens.
-            # No-ops when there's no tty (e.g. running as a systemd service).
-            if start_spacebar_listener(self._advance_screen):
-                logger.info(
-                    "Screen switching enabled: press Space to cycle screens (%s)",
-                    ", ".join(screen_manager.names()),
-                )
+            self._start_input_listeners()
 
             # Keep the main thread running
             try:

@@ -139,6 +139,9 @@ class Config:
         self.BIRD_ASSET_DIR = os.getenv('BIRD_ASSET_DIR', 'assets/birds/illustrations')
         self.BIRD_MOCK_DATA = os.getenv('BIRD_MOCK_DATA', 'assets/birds/mock_detections.json')
         self.BIRD_USE_MOCK_DATA = os.getenv('BIRD_USE_MOCK_DATA', 'false').lower() == 'true'
+        self.TOUCH_ENABLED = os.getenv('TOUCH_ENABLED', 'false').lower() == 'true'
+        self.TOUCH_CHANNEL = int(os.getenv('TOUCH_CHANNEL', '0'))
+        self.TOUCH_I2C_ADDRESS = int(os.getenv('TOUCH_I2C_ADDRESS', '0x5a'), 0)
 
         if not self.STATION_ID:
             raise ValueError("STATION_ID must be set in .env file")

@@ -165,6 +165,47 @@ def test_runner_prewarms_remaining_screens_after_current_render():
     ]
 
 
+def test_runner_starts_touch_listener_when_enabled(monkeypatch):
+    runner, _disp, _ = _ready_runner()
+    touch_calls = []
+
+    monkeypatch.setattr("runner.config.TOUCH_ENABLED", True)
+    monkeypatch.setattr("runner.config.TOUCH_CHANNEL", 0)
+    monkeypatch.setattr("runner.config.TOUCH_I2C_ADDRESS", 0x5A)
+    monkeypatch.setattr("runner.start_spacebar_listener", lambda _callback: False)
+
+    def fake_touch(callback, *, channel, address):
+        touch_calls.append({
+            "callback": callback,
+            "channel": channel,
+            "address": address,
+        })
+        return True
+
+    monkeypatch.setattr("runner.start_touch_listener", fake_touch)
+
+    runner._start_input_listeners()
+
+    assert touch_calls == [{
+        "callback": runner._advance_screen,
+        "channel": 0,
+        "address": 0x5A,
+    }]
+
+
+def test_runner_skips_touch_listener_when_disabled(monkeypatch):
+    runner, _disp, _ = _ready_runner()
+    touch_calls = []
+
+    monkeypatch.setattr("runner.config.TOUCH_ENABLED", False)
+    monkeypatch.setattr("runner.start_spacebar_listener", lambda _callback: False)
+    monkeypatch.setattr("runner.start_touch_listener", lambda *_args, **_kwargs: touch_calls.append("touch"))
+
+    runner._start_input_listeners()
+
+    assert touch_calls == []
+
+
 def test_min_interval_throttles():
     runner, disp, clock = _ready_runner()
     runner._check_display_update()        # first update renders
