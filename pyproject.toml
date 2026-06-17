@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "adafruit-blinka>=8.50.0; sys_platform == 'linux'",
+    "adafruit-circuitpython-mpr121>=2.1.21; sys_platform == 'linux'",
     "cairocffi>=1.7.1",
     "cairosvg>=2.7.1",
     "gpiozero>=2.0.1; sys_platform == 'linux'",

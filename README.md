@@ -7,6 +7,7 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Real-time subway arrival times (NYCT GTFS feeds — no API key)
 - Current Citi Bike availability for a station (GBFS feeds — no API key)
 - Current weather and hourly/daily forecast (Open-Meteo — no API key)
+- BirdNET-Pi observation and collage screens fetched over SSH from a remote SQLite database
 - Debug mode with automatic image preview
 - Native e-ink display support on Raspberry Pi
 
@@ -24,6 +25,7 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 - Raspberry Pi 4b+
     - SD Card, power supply, (optionally keyboard, mouse, hdmi cord, etc.)
 - [Waveshare 9.7inch E-Ink display HAT for Raspberry Pi](https://www.waveshare.com/product/displays/e-paper/9.7inch-e-paper-hat.htm)
+- Optional MPR121 capacitive touch breakout for screen switching
 
 (For the frame and mounting, see [Physical Build](#physical-build) below.)
 
@@ -63,6 +65,17 @@ local). Copy `config/.env.template` and fill it in:
 | `CITIBIKE_STATION_ID` | yes | Citi Bike station UUID (see below) |
 | `CITIBIKE_STATION_NAME` | yes | Display name for the bike station |
 | `WEATHER_LAT`, `WEATHER_LON` | no | Coordinates (defaults to NYC center) |
+| `BIRDNET_SSH_HOST` | no | SSH host alias for the BirdNET-Pi sensor (defaults to `birdnet`) |
+| `BIRDNET_DB_PATH` | no | Remote BirdNET-Pi SQLite path (defaults to `~/BirdNET-Pi/scripts/birds.db`) |
+| `BIRD_WINDOW_HOURS` | no | Observation summary window for the bird screen (defaults to `24`) |
+| `BIRD_RESULT_LIMIT` | no | Max grouped species returned by the bird feed (defaults to `15`) |
+| `BIRD_UPDATE_SECONDS` | no | Bird feed refresh interval (defaults to `900`) |
+| `BIRD_ASSET_DIR` | no | Local bird illustration directory |
+| `BIRD_MOCK_DATA` | no | Local mock bird result JSON for debug rendering |
+| `BIRD_USE_MOCK_DATA` | no | `true` makes the bird service read `BIRD_MOCK_DATA` instead of SSH |
+| `TOUCH_ENABLED` | no | `true` enables optional MPR121 capacitive touch screen switching |
+| `TOUCH_CHANNEL` | no | MPR121 electrode index to poll (defaults to `0`) |
+| `TOUCH_I2C_ADDRESS` | no | MPR121 I2C address (defaults to `0x5a`) |
 | `DEBUG` | no | `true` saves a render to `debug_output/` instead of driving the display |
 | `DEBUG_FRAME_HISTORY` | no | `true` also saves timestamped debug frames and `debug_output/frame_manifest.csv` |
 | `QUIET_MODE` | no | `true` suppresses console output |
@@ -72,6 +85,29 @@ for smoke tests such as `DEBUG=true QUIET_MODE=false uv run runner.py`.
 
 Find your Citi Bike station's UUID and name in the GBFS feed:
 <https://gbfs.citibikenyc.com/gbfs/en/station_information.json>
+
+### Optional Touch Input
+
+The app can use one MPR121 capacitive touch electrode to advance screens. Wire
+the breakout to Raspberry Pi I2C bus 1:
+
+| Wire | Pi connection |
+|---|---|
+| red | pin 1 / 3.3V |
+| blue | pin 3 / SDA |
+| yellow | pin 5 / SCL |
+| black | pin 6 / GND |
+| brass button | MPR121 E0 |
+
+Enable it with:
+
+```bash
+TOUCH_ENABLED=true
+TOUCH_CHANNEL=0
+TOUCH_I2C_ADDRESS=0x5a
+```
+
+`sudo i2cdetect -y 1` should show `5a`.
 
 ### Running
 
@@ -88,6 +124,16 @@ If `DEBUG=false`:
 To run:
 ```bash
 uv run runner.py
+```
+
+Screen switching cycles through:
+
+```text
+transit
+bird-collage
+bird-collage-named
+birds
+bird-profile
 ```
 
 ## Physical Build

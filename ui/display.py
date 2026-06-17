@@ -15,9 +15,11 @@ import time
 
 from data.models import AppData
 from ui.layout import getImageFromAppData
+from ui.render_cache import RenderCache
 from config.config import config
 
 logger = logging.getLogger(__name__)
+render_cache = RenderCache()
 
 # Only import IT8951 on Raspberry Pi
 IS_RASPBERRY_PI = sys.platform == 'linux'
@@ -375,6 +377,7 @@ class EInkDisplay:
 class Display:
     def __init__(self):
         self.display = None
+        self.render_cache = render_cache
         self.next_frame = None
         self.clear_cooldown_seconds = config.timing.DISPLAY_CLEAR_COOLDOWN_SECONDS
         self._large_update_cooldown_until = 0
@@ -493,6 +496,19 @@ class Display:
             DisplayIntent.MAINTENANCE_CLEAR,
         }
 
+    def prewarm(
+        self,
+        app_data: AppData,
+        now: Optional[datetime],
+        screen_names: list[str],
+    ) -> None:
+        self.render_cache.prewarm(
+            app_data,
+            now,
+            screen_names,
+            getImageFromAppData,
+        )
+
     def update(
         self,
         app_data: AppData,
@@ -508,12 +524,18 @@ class Display:
             display_intent = _coerce_intent(intent, clear)
             if not self._can_accept_intent_without_render(display_intent):
                 logger.info("Skipping %s render because a higher-priority frame is already pending", display_intent.value)
-                return
+                return False
 
-            img = getImageFromAppData(
+            cacheable = not (
+                screen_name == "transit"
+                and display_intent == DisplayIntent.NORMAL
+            )
+            img = self.render_cache.get_or_render(
                 app_data,
-                now=now,
-                screen_name=screen_name,
+                now,
+                screen_name,
+                getImageFromAppData,
+                cacheable=cacheable,
             )
             queued_at = time.time()
             frame = DisplayFrame(
@@ -528,8 +550,7 @@ class Display:
                 intent=display_intent,
             )
             queued = self._queue_frame(frame)
-            if not queued:
-                return
+            return queued
                 
         except Exception as e:
             logger.error(f"Error queuing display update: {str(e)}")

@@ -8,6 +8,7 @@ from PIL import Image
 from data import AppData
 from ui import display as display_module
 from ui.display import DebugDisplay, Display, DisplayFrame, DisplayIntent
+from ui.render_cache import RenderCache
 
 
 def _image():
@@ -66,7 +67,7 @@ def test_debug_display_rotates_manifest_when_existing_schema_is_stale(tmp_path):
         image=_image(),
         partial=False,
         clear=False,
-        screen_name="hello",
+        screen_name="bird-collage",
         render_requested_at=datetime(2026, 1, 15, 14, 23, 5),
         queued_at=time.time(),
         sequence=8,
@@ -83,7 +84,7 @@ def test_debug_display_rotates_manifest_when_existing_schema_is_stale(tmp_path):
         rows = list(csv.DictReader(f))
 
     assert rows[0]["sequence"] == "8"
-    assert rows[0]["screen_name"] == "hello"
+    assert rows[0]["screen_name"] == "bird-collage"
     assert rows[0]["intent"] == "normal"
 
 
@@ -146,7 +147,7 @@ def test_display_queue_allows_screen_transitions_during_large_update_cooldown(mo
     display.update(
         AppData(),
         now=datetime(2026, 1, 15, 14, 23, 1),
-        screen_name="hello",
+        screen_name="bird-collage",
         intent=DisplayIntent.SCREEN_TRANSITION,
     )
     frame = display._take_next_frame(now)
@@ -169,7 +170,7 @@ def test_normal_frame_does_not_replace_pending_screen_transition(monkeypatch):
     display.update(
         AppData(),
         now=datetime(2026, 1, 15, 14, 23, 1),
-        screen_name="hello",
+        screen_name="bird-collage",
         intent=DisplayIntent.SCREEN_TRANSITION,
     )
     display.update(
@@ -181,9 +182,9 @@ def test_normal_frame_does_not_replace_pending_screen_transition(monkeypatch):
     frame = display._take_next_frame(time.time())
 
     assert frame is not None
-    assert frame.screen_name == "hello"
+    assert frame.screen_name == "bird-collage"
     assert frame.intent == DisplayIntent.SCREEN_TRANSITION
-    assert render_calls == ["hello"]
+    assert render_calls == ["bird-collage"]
 
 
 def test_screen_transition_replaces_pending_normal_frame(monkeypatch):
@@ -204,13 +205,13 @@ def test_screen_transition_replaces_pending_normal_frame(monkeypatch):
     display.update(
         AppData(),
         now=datetime(2026, 1, 15, 14, 23, 2),
-        screen_name="hello",
+        screen_name="bird-collage",
         intent=DisplayIntent.SCREEN_TRANSITION,
     )
     frame = display._take_next_frame(time.time())
 
     assert frame is not None
-    assert frame.screen_name == "hello"
+    assert frame.screen_name == "bird-collage"
     assert frame.intent == DisplayIntent.SCREEN_TRANSITION
     assert frame.overwritten_before_consume == 1
 
@@ -231,8 +232,112 @@ def test_legacy_clear_frames_map_to_maintenance_clear(monkeypatch):
     assert frame.intent == DisplayIntent.MAINTENANCE_CLEAR
 
 
+def test_display_reuses_cached_render_for_same_screen_key(monkeypatch):
+    display = _display_without_thread()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append((screen_name, now))
+        return _image()
+
+    monkeypatch.setattr(display_module, "getImageFromAppData", fake_render)
+
+    now = datetime(2026, 1, 15, 14, 23, 1)
+    display.update(AppData(), now=now, screen_name="birds")
+    display.update(AppData(), now=now, screen_name="birds")
+
+    assert render_calls == [("birds", now)]
+
+
+def test_bird_screen_cache_survives_clock_second_changes(monkeypatch):
+    display = _display_without_thread()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append((screen_name, now))
+        return _image()
+
+    monkeypatch.setattr(display_module, "getImageFromAppData", fake_render)
+
+    display.update(AppData(), now=datetime(2026, 1, 15, 14, 23, 1), screen_name="bird-collage")
+    display.update(AppData(), now=datetime(2026, 1, 15, 14, 23, 2), screen_name="bird-collage")
+
+    assert len(render_calls) == 1
+
+
+def test_normal_transit_frames_do_not_use_cache(monkeypatch):
+    display = _display_without_thread()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append((screen_name, now))
+        return _image()
+
+    monkeypatch.setattr(display_module, "getImageFromAppData", fake_render)
+
+    display.update(AppData(), now=datetime(2026, 1, 15, 14, 23, 1), screen_name="transit")
+    display.update(AppData(), now=datetime(2026, 1, 15, 14, 23, 1), screen_name="transit")
+
+    assert len(render_calls) == 2
+
+
+def test_display_prewarms_screens_sequentially(monkeypatch):
+    display = _display_without_thread()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append(screen_name)
+        return _image()
+
+    monkeypatch.setattr(display_module, "getImageFromAppData", fake_render)
+
+    display.prewarm(
+        AppData(),
+        datetime(2026, 1, 15, 14, 23, 1),
+        ["bird-collage", "bird-collage-named", "birds"],
+    )
+
+    assert display.render_cache.wait_for_idle()
+    assert render_calls == ["bird-collage", "bird-collage-named", "birds"]
+
+
+def test_foreground_render_reuses_inflight_prewarm_result():
+    cache = RenderCache()
+    entered_render = threading.Event()
+    release_render = threading.Event()
+    render_calls = []
+    results = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append(screen_name)
+        entered_render.set()
+        assert release_render.wait(1)
+        return _image()
+
+    app_data = AppData()
+    now = datetime(2026, 1, 15, 14, 23, 1)
+    cache.prewarm(app_data, now, ["birds"], fake_render)
+    assert entered_render.wait(1)
+
+    foreground = threading.Thread(
+        target=lambda: results.append(cache.get_or_render(app_data, now, "birds", fake_render))
+    )
+    foreground.start()
+    time.sleep(0.05)
+
+    assert foreground.is_alive()
+    release_render.set()
+    foreground.join(1)
+
+    assert not foreground.is_alive()
+    assert cache.wait_for_idle()
+    assert len(results) == 1
+    assert render_calls == ["birds"]
+
+
 def _display_without_thread():
     display = Display.__new__(Display)
+    display.render_cache = RenderCache()
     display.next_frame = None
     display.clear_cooldown_seconds = 5
     display._large_update_cooldown_until = 0

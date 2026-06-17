@@ -1,0 +1,110 @@
+{
+  "window_hours": 24,
+  "observations": [
+    {
+      "sci_name": "Poecile atricapillus",
+      "common_name": "Black-capped Chickadee",
+      "count": 7,
+      "last_seen": "2026-06-11 22:40:10",
+      "max_confidence": 0.908
+    },
+    {
+      "sci_name": "Dryobates pubescens",
+      "common_name": "Downy Woodpecker",
+      "count": 4,
+      "last_seen": "2026-06-11 19:14:03",
+      "max_confidence": 0.887
+    },
+    {
+      "sci_name": "Cardinalis cardinalis",
+      "common_name": "Northern Cardinal",
+      "count": 3,
+      "last_seen": "2026-06-11 18:52:44",
+      "max_confidence": 0.931
+    },
+    {
+      "sci_name": "Turdus migratorius",
+      "common_name": "American Robin",
+      "count": 2,
+      "last_seen": "2026-06-11 17:33:18",
+      "max_confidence": 0.846
+    },
+    {
+      "sci_name": "Cyanocitta cristata",
+      "common_name": "Blue Jay",
+      "count": 1,
+      "last_seen": "2026-06-11 15:09:51",
+      "max_confidence": 0.792
+    },
+    {
+      "sci_name": "Dumetella carolinensis",
+      "common_name": "Gray Catbird",
+      "count": 8,
+      "last_seen": "2026-06-11 14:42:08",
+      "max_confidence": 0.934
+    },
+    {
+      "sci_name": "Zenaida macroura",
+      "common_name": "Mourning Dove",
+      "count": 6,
+      "last_seen": "2026-06-11 14:09:33",
+      "max_confidence": 0.873
+    },
+    {
+      "sci_name": "Baeolophus bicolor",
+      "common_name": "Tufted Titmouse",
+      "count": 5,
+      "last_seen": "2026-06-11 13:58:19",
+      "max_confidence": 0.901
+    },
+    {
+      "sci_name": "Sitta carolinensis",
+      "common_name": "White-breasted Nuthatch",
+      "count": 3,
+      "last_seen": "2026-06-11 13:32:41",
+      "max_confidence": 0.829
+    },
+    {
+      "sci_name": "Spinus tristis",
+      "common_name": "American Goldfinch",
+      "count": 3,
+      "last_seen": "2026-06-11 12:40:02",
+      "max_confidence": 0.887
+    },
+    {
+      "sci_name": "Agelaius phoeniceus",
+      "common_name": "Red-winged Blackbird",
+      "count": 2,
+      "last_seen": "2026-06-11 12:21:14",
+      "max_confidence": 0.817
+    },
+    {
+      "sci_name": "Haemorhous mexicanus",
+      "common_name": "House Finch",
+      "count": 2,
+      "last_seen": "2026-06-11 11:58:07",
+      "max_confidence": 0.764
+    },
+    {
+      "sci_name": "Colaptes auratus",
+      "common_name": "Northern Flicker",
+      "count": 1,
+      "last_seen": "2026-06-11 11:31:55",
+      "max_confidence": 0.804
+    },
+    {
+      "sci_name": "Melospiza melodia",
+      "common_name": "Song Sparrow",
+      "count": 1,
+      "last_seen": "2026-06-11 10:44:28",
+      "max_confidence": 0.778
+    },
+    {
+      "sci_name": "Setophaga coronata",
+      "common_name": "Yellow-rumped Warbler",
+      "count": 1,
+      "last_seen": "2026-06-11 10:12:05",
+      "max_confidence": 0.743
+    }
+  ]
+}

@@ -6,7 +6,6 @@ the runner advances the active screen in response to input.
 """
 
 from typing import List, Optional, Tuple
-from pathlib import Path
 
 from PIL import ImageDraw
 
@@ -20,15 +19,9 @@ from ui.panes import (
     HourlyWeatherPane,
     CitibikePane,
     WeatherOverviewPane,
-    HelloPane,
-    StaticImagePane,
-)
-
-_ROOT_DIR = Path(__file__).resolve().parent.parent
-_BIRD_IMAGE_DIR = _ROOT_DIR / "assets" / "birdstuff"
-BIRD_IMAGE_PATHS = tuple(
-    _BIRD_IMAGE_DIR / f"birds_{index:02d}.png"
-    for index in range(1, 6)
+    BirdPane,
+    BirdCollagePane,
+    BirdProfilePane,
 )
 
 
@@ -82,8 +75,30 @@ def _transit_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]
     return _transit_redraw_key(ctx) != _transit_redraw_key(prev_ctx)
 
 
-def _static_should_redraw(_ctx: RenderContext, _prev_ctx: Optional[RenderContext]) -> bool:
-    return False
+def _bird_redraw_key(ctx: RenderContext) -> tuple:
+    birds = ctx.data.birds
+    if birds is None:
+        return (None,)
+    return (
+        birds.window_hours,
+        birds.source_unavailable,
+        tuple(
+            (
+                obs.sci_name,
+                obs.common_name,
+                obs.count,
+                obs.last_seen,
+                obs.max_confidence,
+            )
+            for obs in birds.observations
+        ),
+    )
+
+
+def _birds_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]) -> bool:
+    if prev_ctx is None:
+        return True
+    return _bird_redraw_key(ctx) != _bird_redraw_key(prev_ctx)
 
 
 def build_transit_screen() -> Screen:
@@ -104,23 +119,43 @@ def build_transit_screen() -> Screen:
     )
 
 
-def build_hello_screen() -> Screen:
-    """A minimal full-bleed screen for experimentation (no chrome)."""
+def build_birds_screen() -> Screen:
+    """A full-screen data-backed BirdNET observations screen."""
     d = config.display
     return Screen(
-        [HelloPane((0, 0, d.WIDTH, d.HEIGHT))],
-        required_data=set(),
-        redraw_policy=_static_should_redraw,
+        [BirdPane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data={"birds"},
+        redraw_policy=_birds_should_redraw,
     )
 
 
-def build_static_image_screen(image_path: Path) -> Screen:
-    """A full-screen static image screen."""
+def build_bird_collage_screen() -> Screen:
+    """A full-screen unlabeled collage of recent BirdNET observations."""
     d = config.display
     return Screen(
-        [StaticImagePane((0, 0, d.WIDTH, d.HEIGHT), image_path)],
-        required_data=set(),
-        redraw_policy=_static_should_redraw,
+        [BirdCollagePane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data={"birds"},
+        redraw_policy=_birds_should_redraw,
+    )
+
+
+def build_named_bird_collage_screen() -> Screen:
+    """A full-screen named collage of recent BirdNET observations."""
+    d = config.display
+    return Screen(
+        [BirdCollagePane((0, 0, d.WIDTH, d.HEIGHT), named=True)],
+        required_data={"birds"},
+        redraw_policy=_birds_should_redraw,
+    )
+
+
+def build_bird_profile_screen() -> Screen:
+    """A full-screen profile for the most recent BirdNET observation."""
+    d = config.display
+    return Screen(
+        [BirdProfilePane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data={"birds"},
+        redraw_policy=_birds_should_redraw,
     )
 
 
@@ -168,9 +203,8 @@ class ScreenManager:
 # The first is the default/active at startup.
 screen_manager = ScreenManager([
     ("transit", build_transit_screen()),
-    ("hello", build_hello_screen()),
-    *(
-        (f"bird-{index}", build_static_image_screen(path))
-        for index, path in enumerate(BIRD_IMAGE_PATHS, start=1)
-    ),
+    ("bird-collage", build_bird_collage_screen()),
+    ("bird-collage-named", build_named_bird_collage_screen()),
+    ("birds", build_birds_screen()),
+    ("bird-profile", build_bird_profile_screen()),
 ])

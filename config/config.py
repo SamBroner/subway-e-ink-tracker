@@ -112,6 +112,7 @@ class TimingConfig:
     WEATHER_UPDATE_SECONDS: int = 300
     SUBWAY_UPDATE_SECONDS: int = 5
     CITIBIKE_UPDATE_SECONDS: int = 60
+    BIRD_UPDATE_SECONDS: int = 900
     DISPLAY_MIN_INTERVAL_SECONDS: int = 1
     DISPLAY_CLEAR_COOLDOWN_SECONDS: int = 5
 
@@ -131,6 +132,16 @@ class Config:
         self.TRAIN_LINE_2 = os.getenv('TRAIN_LINE_2')
         self.CITIBIKE_STATION_ID = os.getenv('CITIBIKE_STATION_ID')
         self.CITIBIKE_STATION_NAME = os.getenv('CITIBIKE_STATION_NAME')
+        self.BIRDNET_SSH_HOST = os.getenv('BIRDNET_SSH_HOST', 'birdnet')
+        self.BIRDNET_DB_PATH = os.getenv('BIRDNET_DB_PATH', '~/BirdNET-Pi/scripts/birds.db')
+        self.BIRD_WINDOW_HOURS = int(os.getenv('BIRD_WINDOW_HOURS', '24'))
+        self.BIRD_RESULT_LIMIT = int(os.getenv('BIRD_RESULT_LIMIT', '15'))
+        self.BIRD_ASSET_DIR = os.getenv('BIRD_ASSET_DIR', 'assets/birds/illustrations')
+        self.BIRD_MOCK_DATA = os.getenv('BIRD_MOCK_DATA', 'assets/birds/mock_detections.json')
+        self.BIRD_USE_MOCK_DATA = os.getenv('BIRD_USE_MOCK_DATA', 'false').lower() == 'true'
+        self.TOUCH_ENABLED = os.getenv('TOUCH_ENABLED', 'false').lower() == 'true'
+        self.TOUCH_CHANNEL = int(os.getenv('TOUCH_CHANNEL', '0'))
+        self.TOUCH_I2C_ADDRESS = int(os.getenv('TOUCH_I2C_ADDRESS', '0x5a'), 0)
 
         if not self.STATION_ID:
             raise ValueError("STATION_ID must be set in .env file")
@@ -148,6 +159,9 @@ class Config:
         self.weather = WeatherConfig(self.display)
         self.subway = SubwayConfig(self.display)
         self.timing = TimingConfig()
+        self.timing.BIRD_UPDATE_SECONDS = int(
+            os.getenv('BIRD_UPDATE_SECONDS', str(self.timing.BIRD_UPDATE_SECONDS))
+        )
         
         # Font sizes
         self.FONT_SIZES = {
