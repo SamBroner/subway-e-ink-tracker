@@ -10,9 +10,10 @@ from typing import List, Optional, Tuple
 from PIL import ImageDraw
 
 from config.config import config
-from ui.screen import Screen
+from ui.screen import Screen, ScreenProfile
 from ui.panes import RenderContext
 from services.subway_service import TrainArrival
+from ui.time_format import displayed_clock
 from ui.panes import (
     DatePane,
     SubwayPane,
@@ -41,10 +42,6 @@ def _draw_transit_chrome(draw: ImageDraw.ImageDraw) -> None:
     draw.line((bottom_vertical_x, bottom_divider_y, bottom_vertical_x, d.HEIGHT), fill=0)
 
 
-def _displayed_time(ctx: RenderContext) -> str:
-    return ctx.now.strftime("%I:%M:%S%p")
-
-
 def _train_key(train: Optional[TrainArrival]) -> Optional[tuple[str, int]]:
     if train is None:
         return None
@@ -63,7 +60,7 @@ def _top_two_train_keys(ctx: RenderContext) -> tuple[Optional[tuple[str, int]], 
 def _transit_redraw_key(ctx: RenderContext) -> tuple:
     subway = ctx.data.subway
     return (
-        _displayed_time(ctx),
+        displayed_clock(ctx.now),
         _top_two_train_keys(ctx),
         subway.service_unavailable if subway else False,
     )
@@ -124,7 +121,7 @@ def build_birds_screen() -> Screen:
     d = config.display
     return Screen(
         [BirdPane((0, 0, d.WIDTH, d.HEIGHT))],
-        required_data={"birds"},
+        required_data=set(),
         redraw_policy=_birds_should_redraw,
     )
 
@@ -134,8 +131,9 @@ def build_bird_collage_screen() -> Screen:
     d = config.display
     return Screen(
         [BirdCollagePane((0, 0, d.WIDTH, d.HEIGHT))],
-        required_data={"birds"},
+        required_data=set(),
         redraw_policy=_birds_should_redraw,
+        profile=ScreenProfile(full_refresh_on_redraw=True),
     )
 
 
@@ -144,8 +142,9 @@ def build_named_bird_collage_screen() -> Screen:
     d = config.display
     return Screen(
         [BirdCollagePane((0, 0, d.WIDTH, d.HEIGHT), named=True)],
-        required_data={"birds"},
+        required_data=set(),
         redraw_policy=_birds_should_redraw,
+        profile=ScreenProfile(full_refresh_on_redraw=True),
     )
 
 
@@ -154,7 +153,7 @@ def build_bird_profile_screen() -> Screen:
     d = config.display
     return Screen(
         [BirdProfilePane((0, 0, d.WIDTH, d.HEIGHT))],
-        required_data={"birds"},
+        required_data=set(),
         redraw_policy=_birds_should_redraw,
     )
 

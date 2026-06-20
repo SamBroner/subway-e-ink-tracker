@@ -2,8 +2,8 @@
 
 `Screen.render` builds the blank frame, renders each pane into it, optionally
 draws cross-pane chrome (e.g. section dividers) on top, and applies the 180°
-rotation for the panel's physical orientation. Chrome is per-screen: a screen
-with no dividers (e.g. a full-bleed hello screen) simply passes none.
+rotation for the panel's physical orientation. Chrome is per-screen: a
+full-screen image or collage with no dividers simply passes none.
 """
 
 from dataclasses import dataclass
@@ -26,6 +26,7 @@ class ScreenProfile:
     """
     waveform: str = "DU"
     binarize: bool = False
+    full_refresh_on_redraw: bool = False
 
 
 RedrawPolicy = Callable[[RenderContext, Optional[RenderContext]], bool]

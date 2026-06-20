@@ -165,6 +165,20 @@ def test_runner_prewarms_remaining_screens_after_current_render():
     ]
 
 
+def test_runner_prewarm_skips_transit_after_bird_profile_render():
+    runner, disp, _ = _ready_prewarming_runner()
+    screen_manager.select(4)  # bird-profile
+
+    runner._check_display_update()
+
+    assert len(disp.prewarm_calls) == 1
+    assert disp.prewarm_calls[0]["screen_names"] == [
+        "bird-collage",
+        "bird-collage-named",
+        "birds",
+    ]
+
+
 def test_runner_starts_touch_listener_when_enabled(monkeypatch):
     runner, _disp, _ = _ready_runner()
     touch_calls = []
@@ -250,6 +264,26 @@ def test_spacebar_advance_renders_bird_collage_without_transit_data():
     runner._advance_screen()
     assert disp.calls == [{
         "app_data": AppData(birds=_bird_result()),
+        "partial": False,
+        "clear": False,
+        "intent": DisplayIntent.SCREEN_TRANSITION,
+        "now": runner.clock.now(),
+        "screen_name": "bird-collage",
+    }]
+
+
+def test_spacebar_advance_renders_bird_collage_before_bird_data_exists():
+    disp = RecordingDisplay()
+    runner = Runner(
+        display=disp,
+        clock=FakeClock(),
+        data_hub=DataHub(initial_data=AppData()),
+    )
+
+    runner._advance_screen()
+
+    assert disp.calls == [{
+        "app_data": AppData(),
         "partial": False,
         "clear": False,
         "intent": DisplayIntent.SCREEN_TRANSITION,

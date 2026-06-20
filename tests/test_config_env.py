@@ -112,3 +112,50 @@ def test_touch_config_defaults(monkeypatch):
     assert module.config.TOUCH_ENABLED is False
     assert module.config.TOUCH_CHANNEL == 0
     assert module.config.TOUCH_I2C_ADDRESS == 0x5A
+
+
+def test_timing_config_uses_dotenv_and_shell_overrides(monkeypatch):
+    file_values = {
+        "DEBUG": "false",
+        "STATION_ID": "file-station",
+        "TRAIN_LINE_1": "F",
+        "TRAIN_LINE_2": "G",
+        "CITIBIKE_STATION_ID": "file-bike-station",
+        "CITIBIKE_STATION_NAME": "File Bike Station",
+        "WEATHER_UPDATE_SECONDS": "444",
+        "DISPLAY_CLEAR_COOLDOWN_SECONDS": "8",
+    }
+    timing_keys = [
+        "WEATHER_UPDATE_SECONDS",
+        "SUBWAY_UPDATE_SECONDS",
+        "CITIBIKE_UPDATE_SECONDS",
+        "BIRD_UPDATE_SECONDS",
+        "DISPLAY_MIN_INTERVAL_SECONDS",
+        "DISPLAY_CLEAR_COOLDOWN_SECONDS",
+    ]
+    for key in [*file_values.keys(), *timing_keys]:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SUBWAY_UPDATE_SECONDS", "7")
+    monkeypatch.setenv("DISPLAY_CLEAR_COOLDOWN_SECONDS", "12")
+
+    def fake_load_dotenv(path, override=False):
+        for key, value in file_values.items():
+            if override or os.getenv(key) is None:
+                monkeypatch.setenv(key, value)
+        return True
+
+    monkeypatch.setattr("dotenv.load_dotenv", fake_load_dotenv)
+
+    module_path = Path(__file__).resolve().parents[1] / "config" / "config.py"
+    module_name = "_config_timing_overrides_under_test"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, module)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    assert module.config.timing.WEATHER_UPDATE_SECONDS == 444
+    assert module.config.timing.SUBWAY_UPDATE_SECONDS == 7
+    assert module.config.timing.CITIBIKE_UPDATE_SECONDS == 60
+    assert module.config.timing.BIRD_UPDATE_SECONDS == 900
+    assert module.config.timing.DISPLAY_CLEAR_COOLDOWN_SECONDS == 12

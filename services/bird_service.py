@@ -47,6 +47,7 @@ class BirdService:
         self._should_run = False
         self._stop_event = threading.Event()
         self._current_result: BirdResult | None = None
+        self._last_good_result: BirdResult | None = None
 
     def subscribe(self, callback: Callable[[BirdResult], None]) -> None:
         self._subscribers.append(callback)
@@ -65,12 +66,18 @@ class BirdService:
         self._update_thread.start()
         logger.info("Started bird update thread with %ss interval", interval_seconds)
 
-    def stop_updates(self) -> None:
+    def stop_updates(self, join_timeout_seconds: float = 2.0) -> None:
         self._should_run = False
         self._stop_event.set()
         if self._update_thread:
-            self._update_thread.join()
-            self._update_thread = None
+            self._update_thread.join(timeout=join_timeout_seconds)
+            if self._update_thread.is_alive():
+                logger.warning(
+                    "Bird update thread did not stop within %.1fs; leaving daemon thread to finish",
+                    join_timeout_seconds,
+                )
+            else:
+                self._update_thread = None
         logger.info("Stopped bird updates")
 
     def _update_loop(self, interval_seconds: int) -> None:
@@ -89,7 +96,9 @@ class BirdService:
                     break
 
     def _should_notify(self, result: BirdResult, previous_result: BirdResult | None = None) -> bool:
-        return result != previous_result
+        if previous_result is None:
+            return True
+        return _notification_key(result) != _notification_key(previous_result)
 
     def _notify_subscribers(self, result: BirdResult) -> None:
         for subscriber in self._subscribers:
@@ -101,12 +110,14 @@ class BirdService:
     def get_bird_observations(self) -> BirdResult:
         try:
             result = self._load_mock_result() if self.use_mock_data else self._fetch_live_result()
-            self._current_result = result
+            if not result.source_unavailable:
+                self._last_good_result = result
             return result
         except Exception as e:
             logger.error("Error getting bird observations: %s", e, exc_info=True)
-            if self._current_result is not None:
-                return replace(self._current_result, source_unavailable=True)
+            fallback = self._last_good_result or self._current_result
+            if fallback is not None:
+                return replace(fallback, source_unavailable=True)
             return BirdResult(
                 observations=[],
                 window_hours=self.window_hours,
@@ -183,3 +194,12 @@ LIMIT {limit};
 
 
 bird_service = BirdService()
+
+
+def _notification_key(result: BirdResult) -> tuple:
+    source_state = result.source_unavailable if not result.observations else False
+    return (
+        result.window_hours,
+        source_state,
+        tuple(result.observations),
+    )

@@ -36,7 +36,8 @@ and `profile` (waveform / binarize; may start waveform-only).
   time changed; a static screen returns False. No per-screen scheduler.
 - transit: `requires={weather,trains}`; `should_redraw` = displayed-time changed
   OR top-2 trains changed OR availability flipped (moved out of the runner).
-- hello: `requires=set()`; `should_redraw=False`.
+- Bird screens: `requires=set()` so startup loading/empty states render before
+  BirdNET data arrives; `should_redraw` changes with the observation snapshot.
 - Runner delegates the gate and redraw decision to the active screen; the
   hardcoded weather/train gate and `_has_significant_change` are removed.
 
@@ -75,7 +76,7 @@ Split display updates by intent instead of overloading `clear=True`:
 ## Phase C — Automated tests
 
 1. **Pixel goldens** (existing): transit unchanged confirms the render path is
-   untouched; add a hello golden.
+   untouched; add bird loading/collage goldens.
 2. **Pure unit tests:** `requires()` and `should_redraw()` per screen with
    constructed contexts; the waveform-selection mapping as a pure function.
 3. **Decision-trace (forward):** drive `engine.tick(now)` + simulated data events
@@ -107,12 +108,13 @@ work until the previous phase has passed both environments.
 
 ### D2 — after Phase B: screen contract + switching
 - [ ] Mac: transit still updates each second / on data (cadence unchanged).
-- [ ] Mac: press Space → hello shows immediately, even before weather/trains load.
-- [ ] Mac: press Space repeatedly → bird-1 through bird-5 render, then transit
-      resumes updating.
-- [ ] Mac: on hello, the saved frame does **not** churn every second (static; no flicker).
-- [ ] Pi: cycle transit → hello → bird-1 ... bird-5 → transit on the panel;
-      transit cadence unchanged; each switch is a single clean full refresh.
+- [ ] Mac: press Space → bird-collage shows immediately, even before BirdNET data loads.
+- [ ] Mac: press Space repeatedly → bird-collage, bird-collage-named, birds,
+      bird-profile, then transit resumes updating.
+- [ ] Mac: bird loading/empty screens do **not** churn every second when data is unchanged.
+- [ ] Pi: cycle transit → bird-collage → bird-collage-named → birds →
+      bird-profile → transit on the panel; transit cadence unchanged; each switch
+      is a single clean full refresh.
 - Pass criteria: switching works through the full ordered cycle; transit behavior
   unchanged; static screens are not gated on data and do not churn every second.
 
@@ -130,7 +132,8 @@ work until the previous phase has passed both environments.
 - **Phase B:** COMPLETE. `Screen` now owns `requires()`,
   `should_redraw(ctx, prev_ctx)`, and a lightweight display profile. Transit
   redraws when the displayed seconds value, top-two trains, or subway
-  availability changes. Hello declares no required data and no regular redraws.
+  availability changes. Bird screens declare no required data and redraw only when
+  the bird snapshot changes.
 - **Phase B2:** COMPLETE. Runner now owns lifecycle/timing/display decisions
   only; `DataHub` owns feed subscriptions and latest typed `AppData`. Mac and
   Pi manual gates passed on commit `2d59e8b`.
@@ -143,11 +146,11 @@ work until the previous phase has passed both environments.
 - **Input/wake follow-up:** COMPLETE. Interactive input is now a debounced
   spacebar/capacitive-button-style "advance screen" action, and the display
   slot wakes immediately while remaining latest-wins rather than FIFO.
-- **Bird screens:** COMPLETE. Five full-screen static bird image screens are
-  registered after hello in the spacebar cycle.
+- **Bird screens:** COMPLETE. BirdNET collage, named collage, list, and profile
+  screens are registered after transit in the spacebar cycle.
 - **Phase C:** NOT STARTED. Phase B added guard tests for its own contract and
   runner behavior, but the broader Phase C checklist is gated on D2 local + Pi
-  manual testing. Pixel goldens are still transit-only; add the hello golden
+  manual testing. Pixel goldens are still transit-only; add bird screen goldens
   only after D2 passes.
 - **Pi timing note:** Seconds remain intentionally enabled. The Pi manual pass
   showed the seconds presentation looks good with the current intent/cooldown

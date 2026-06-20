@@ -72,14 +72,23 @@ def start_touch_listener(
         debounce_seconds=debounce_seconds,
     )
 
-    def _loop() -> None:
-        while True:
-            try:
-                detector.poll_once()
-            except Exception as e:
-                logger.warning("MPR121 touch input stopped: %s", e)
-                return
-            time.sleep(poll_interval_seconds)
-
-    threading.Thread(target=_loop, daemon=True, name="mpr121-touch-listener").start()
+    threading.Thread(
+        target=_run_touch_poll_loop,
+        args=(detector, poll_interval_seconds),
+        daemon=True,
+        name="mpr121-touch-listener",
+    ).start()
     return True
+
+
+def _run_touch_poll_loop(
+    detector: TouchEdgeDetector,
+    poll_interval_seconds: float,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    while True:
+        try:
+            detector.poll_once()
+        except Exception as e:
+            logger.warning("MPR121 touch poll failed; continuing: %s", e, exc_info=True)
+        sleep(poll_interval_seconds)
