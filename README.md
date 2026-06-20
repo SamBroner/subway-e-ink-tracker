@@ -45,6 +45,8 @@ uv sync
 
 Bird illustration assets are stored in Git LFS. If you skip `git lfs pull`, the
 transit display still runs, but bird screens will use missing-art placeholders.
+The illustrations were created by Sam Broner with Gemini image generation; see
+`assets/birds/README.md` for provenance notes.
 
 ### Installation
 1. Install uv (if not already installed)
@@ -244,8 +246,7 @@ sudo systemctl stop subway-eink.service
 
 - Remove the vendored `cairo-1.14.6/` tree and replace it with platform install notes.
 - Add a real weather-unavailable render path for degraded payloads missing `current`.
-- Reconcile `requirements.txt` with `pyproject.toml`, or remove it if `uv` is the supported path.
-- Add repo-level license metadata and complete source/license provenance for `assets/birds/illustrations/`.
+- Add repo-level license metadata.
 - Add CI for `uv run pytest`.
 - Extract shared bird text fitting, count, and last-seen formatting helpers from the bird panes.
 - Re-evaluate `BirdCollagePane`'s private image cache now that screen frames also go through `RenderCache`.
