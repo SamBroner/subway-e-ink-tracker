@@ -140,7 +140,6 @@ Screen switching cycles through:
 
 ```text
 transit
-bird-collage
 bird-collage-named
 birds
 bird-profile

@@ -202,7 +202,6 @@ class ScreenManager:
 # The first is the default/active at startup.
 screen_manager = ScreenManager([
     ("transit", build_transit_screen()),
-    ("bird-collage", build_bird_collage_screen()),
     ("bird-collage-named", build_named_bird_collage_screen()),
     ("birds", build_birds_screen()),
     ("bird-profile", build_bird_profile_screen()),

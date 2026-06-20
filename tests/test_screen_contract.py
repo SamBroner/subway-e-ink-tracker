@@ -11,7 +11,7 @@ from services.subway_service import TrainArrival
 from services.subway_service import SubwayResult
 from ui.panes import BirdCollagePane, BirdPane, BirdProfilePane, RenderContext
 from ui.panes.bird_art import BirdArtLoader
-from ui.screens import screen_manager
+from ui.screens import build_bird_collage_screen, screen_manager
 
 
 BIRD_ART_DIR = Path(__file__).parent / "fixtures" / "bird_art"
@@ -143,14 +143,14 @@ def _label_overlaps_bird_alpha(label_box, placement) -> bool:
 def test_screen_requirements_and_exact_order():
     assert screen_manager.names() == [
         "transit",
-        "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
     ]
     assert "hello" not in screen_manager.names()
+    assert "bird-collage" not in screen_manager.names()
     assert screen_manager.get("transit").requires() == {"weather", "subway"}
-    for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
+    for name in ("bird-collage-named", "birds", "bird-profile"):
         assert screen_manager.get(name).requires() == set()
 
 
@@ -198,7 +198,8 @@ def test_bird_screens_redraw_when_observations_change():
         window_hours=24,
     )))
 
-    for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
+    assert build_bird_collage_screen().should_redraw(current, prev)
+    for name in ("bird-collage-named", "birds", "bird-profile"):
         assert screen_manager.get(name).should_redraw(current, prev)
 
 
