@@ -98,6 +98,24 @@ for smoke tests such as `DEBUG=true QUIET_MODE=false uv run runner.py`.
 Find your Citi Bike station's UUID and name in the GBFS feed:
 <https://gbfs.citibikenyc.com/gbfs/en/station_information.json>
 
+### BirdNET-Pi Source
+
+Bird screens expect a separate BirdNET-Pi sensor that writes detections to
+SQLite. Configure the display Pi with a normal OpenSSH alias named `birdnet` and
+keep `BIRDNET_DB_PATH` pointed at the sensor database, usually
+`~/BirdNET-Pi/scripts/birds.db`.
+
+Verify the display Pi can read the sensor without interactive auth:
+
+```bash
+ssh -o BatchMode=yes birdnet 'hostname'
+ssh -o BatchMode=yes birdnet \
+  'sqlite3 -json ~/BirdNET-Pi/scripts/birds.db "SELECT COUNT(*) AS detections FROM detections;"'
+```
+
+The app treats BirdNET-Pi as read-only, groups recent rows from the `detections`
+table, and renders loading/offline states when the sensor is unreachable.
+
 ### Optional Touch Input
 
 The app can use one MPR121 capacitive touch electrode to advance screens. Wire
