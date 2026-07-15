@@ -15,6 +15,14 @@ class CitibikePane(Pane):
     def _draw_bike_panel(self, surface: PaneSurface, bike_data: BikeAvailability | None):
         """Draw bike counts with stacked icons on the left side of the bottom section."""
         section_y = self.weather.BOTTOM_SECTION_Y
+        if bike_data and bike_data.source_unavailable:
+            surface.text(
+                (self.weather.BIKE_SECTION_X, section_y + 18),
+                "BIKES OFFLINE",
+                font=fonts.get('small'),
+                fill=0,
+                anchor="ls",
+            )
         rows = [
             (getattr(bike_data, "classic_bikes", None), "bike", self.weather.BIKE_ICON_SIZE),
             (getattr(bike_data, "ebikes", None), "lightningbolt", self.weather.EBIKE_ICON_SIZE)

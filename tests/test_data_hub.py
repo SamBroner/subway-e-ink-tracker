@@ -104,6 +104,28 @@ def test_data_hub_start_subscribes_and_starts_all_feeds():
     assert len(birds.started_intervals) == 1
 
 
+def test_data_hub_restart_does_not_duplicate_feed_subscriptions():
+    weather = FakeFeed()
+    subway = FakeFeed()
+    bikes = FakeFeed()
+    birds = FakeFeed()
+    hub = DataHub(weather_feed=weather, subway_feed=subway, bikes_feed=bikes, birds_feed=birds)
+    seen = []
+    hub.subscribe(lambda key, _data: seen.append(key))
+
+    hub.start()
+    hub.stop()
+    hub.start()
+    weather.emit({"current": {}})
+
+    assert len(weather.subscribers) == 1
+    assert len(subway.subscribers) == 1
+    assert len(bikes.subscribers) == 1
+    assert len(birds.subscribers) == 1
+    assert len(weather.started_intervals) == 2
+    assert seen == ["weather"]
+
+
 def test_data_hub_stop_stops_all_feeds():
     weather = FakeFeed()
     subway = FakeFeed()

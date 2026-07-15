@@ -1,6 +1,6 @@
 import logging
 from typing import Optional, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import requests
 from config.config import config
 import threading
@@ -13,6 +13,7 @@ class BikeAvailability:
     ebikes: int
     station_id: str
     station_name: str
+    source_unavailable: bool = False
 
 class CitibikeService:
     def __init__(self):
@@ -59,17 +60,18 @@ class CitibikeService:
         if not self._current_availability:
             return True
         
-        return (new_availability.classic_bikes != self._current_availability.classic_bikes or
-                new_availability.ebikes != self._current_availability.ebikes)
+        return new_availability != self._current_availability
     
     def _update_loop(self, interval_seconds: int):
         """Background update loop"""
         while self._should_run:
             try:
                 availability = self.get_bike_availability()
-                if availability and self._should_notify(availability):
+                if availability:
+                    should_notify = self._should_notify(availability)
                     self._current_availability = availability
-                    self._notify_subscribers(availability)
+                    if should_notify:
+                        self._notify_subscribers(availability)
                 if self._stop_event.wait(interval_seconds):
                     break
             except Exception as e:
@@ -108,7 +110,7 @@ class CitibikeService:
             
             if not station_data:
                 logger.warning(f"Station {self.station_id} not found in feed")
-                return None
+                return self._unavailable_result()
             
             # Parse vehicle types to get accurate counts
             classic_bikes = 0
@@ -138,7 +140,13 @@ class CitibikeService:
             
         except Exception as e:
             logger.error(f"Error getting citibike data: {str(e)}", exc_info=True)
+            return self._unavailable_result()
+
+    def _unavailable_result(self) -> Optional[BikeAvailability]:
+        """Keep the last counts while explicitly marking them as stale."""
+        if self._current_availability is None:
             return None
+        return replace(self._current_availability, source_unavailable=True)
 
 # Create a global citibike service instance
 citibike_service = CitibikeService()
