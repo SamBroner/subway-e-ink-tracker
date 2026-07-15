@@ -198,27 +198,40 @@ class WeatherService:
             return min(interval_seconds, self.initial_retry_seconds)
         return interval_seconds
 
+    def _publish_if_changed(self, weather_data: Dict) -> bool:
+        changed = weather_data != self._current_data
+        logger.debug(
+            "Weather update comparison result: changed=%s (new_type=%s, cache_type=%s)",
+            changed,
+            type(weather_data).__name__,
+            type(self._current_data).__name__ if self._current_data is not None else None,
+        )
+        if changed:
+            self._current_data = weather_data
+            self._notify_subscribers(weather_data)
+        else:
+            logger.debug("Weather data unchanged; skipping subscriber notification")
+        return changed
+
+    def _unavailable_result(self) -> Dict | None:
+        """Keep the last forecast while explicitly marking it as stale."""
+        if self._current_data is None:
+            return None
+        return {**self._current_data, "source_unavailable": True}
+
     def _update_loop(self, interval_seconds: int):
         """Background update loop"""
         while self._should_run:
             try:
                 weather_data = self.get_weather()
-                changed = weather_data != self._current_data
-                logger.debug(
-                    "Weather update comparison result: changed=%s (new_type=%s, cache_type=%s)",
-                    changed,
-                    type(weather_data).__name__,
-                    type(self._current_data).__name__ if self._current_data is not None else None
-                )
-                if changed:  # Only notify if data changed
-                    self._current_data = weather_data
-                    self._notify_subscribers(weather_data)
-                else:
-                    logger.debug("Weather data unchanged; skipping subscriber notification")
+                self._publish_if_changed(weather_data)
                 if self._stop_event.wait(interval_seconds):
                     break
             except Exception as e:
                 logger.error(f"Error in weather update loop: {str(e)}")
+                unavailable = self._unavailable_result()
+                if unavailable is not None:
+                    self._publish_if_changed(unavailable)
                 retry_delay = self._retry_delay_after_error(interval_seconds)
                 logger.info("Retrying weather update in %ss", retry_delay)
                 if self._stop_event.wait(retry_delay):
@@ -364,6 +377,7 @@ class WeatherService:
             data = response.json()
             # Transform the data to match our expected format
             weather_data = {
+                'source_unavailable': False,
                 'current': self._get_current_conditions(data),
                 'forecast': {
                     'forecastday': self._get_forecast_days(data)

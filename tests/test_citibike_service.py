@@ -7,6 +7,7 @@ Run from the repo root:
 import os
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -84,6 +85,22 @@ class GetBikeAvailabilityTests(unittest.TestCase):
 
         self.assertIsNone(self.service.get_bike_availability())
 
+    @patch("services.citibike_service.requests.get")
+    def test_preserves_last_counts_and_marks_them_unavailable(self, mock_get):
+        self.service._current_availability = BikeAvailability(
+            classic_bikes=7,
+            ebikes=4,
+            station_id="test-station-uuid",
+            station_name="Test Station",
+        )
+        mock_get.side_effect = RuntimeError("network down")
+
+        result = self.service.get_bike_availability()
+
+        self.assertEqual(result.classic_bikes, 7)
+        self.assertEqual(result.ebikes, 4)
+        self.assertTrue(result.source_unavailable)
+
 
 class ShouldNotifyTests(unittest.TestCase):
     def setUp(self):
@@ -108,6 +125,14 @@ class ShouldNotifyTests(unittest.TestCase):
         self.service._current_availability = self._avail(5, 5)
         self.assertTrue(self.service._should_notify(self._avail(6, 5)))
         self.assertTrue(self.service._should_notify(self._avail(5, 4)))
+
+    def test_notifies_on_outage_and_recovery(self):
+        self.service._current_availability = self._avail(5, 5)
+        unavailable = replace(self._avail(5, 5), source_unavailable=True)
+
+        self.assertTrue(self.service._should_notify(unavailable))
+        self.service._current_availability = unavailable
+        self.assertTrue(self.service._should_notify(self._avail(5, 5)))
 
 
 if __name__ == "__main__":

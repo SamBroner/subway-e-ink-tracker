@@ -34,6 +34,7 @@ class DataHub:
         self._birds_feed = birds_feed
         self._subscribers: list[DataCallback] = []
         self._lock = threading.Lock()
+        self._feeds_subscribed = False
         self._started = False
 
     @property
@@ -49,10 +50,12 @@ class DataHub:
             logger.warning("DataHub already started")
             return
 
-        self._weather_feed.subscribe(self.handle_weather_update)
-        self._subway_feed.subscribe(self.handle_subway_update)
-        self._bikes_feed.subscribe(self.handle_bike_update)
-        self._birds_feed.subscribe(self.handle_bird_update)
+        if not self._feeds_subscribed:
+            self._weather_feed.subscribe(self.handle_weather_update)
+            self._subway_feed.subscribe(self.handle_subway_update)
+            self._bikes_feed.subscribe(self.handle_bike_update)
+            self._birds_feed.subscribe(self.handle_bird_update)
+            self._feeds_subscribed = True
 
         self._weather_feed.start_updates(interval_seconds=config.timing.WEATHER_UPDATE_SECONDS)
         self._subway_feed.start_updates(interval_seconds=config.timing.SUBWAY_UPDATE_SECONDS)

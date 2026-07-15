@@ -38,6 +38,39 @@ def test_weather_initial_failure_uses_short_retry_delay():
     assert service._retry_delay_after_error(300) == 300
 
 
+class StopAfterWait:
+    def wait(self, _timeout):
+        return True
+
+
+def test_weather_outage_publishes_last_data_as_unavailable():
+    service = WeatherService()
+    service._current_data = {"current": {"temp_f": 72}, "source_unavailable": False}
+    seen = []
+    service.subscribe(seen.append)
+    service.get_weather = lambda: (_ for _ in ()).throw(RuntimeError("network down"))
+    service._stop_event = StopAfterWait()
+    service._should_run = True
+
+    service._update_loop(interval_seconds=300)
+
+    assert seen[-1] == {"current": {"temp_f": 72}, "source_unavailable": True}
+
+
+def test_weather_recovery_clears_unavailable_status():
+    service = WeatherService()
+    service._current_data = {"current": {"temp_f": 72}, "source_unavailable": True}
+    seen = []
+    service.subscribe(seen.append)
+    service.get_weather = lambda: {"current": {"temp_f": 72}, "source_unavailable": False}
+    service._stop_event = StopAfterWait()
+    service._should_run = True
+
+    service._update_loop(interval_seconds=300)
+
+    assert seen[-1] == {"current": {"temp_f": 72}, "source_unavailable": False}
+
+
 def test_weather_stop_interrupts_interval_sleep():
     service = WeatherService()
     first_fetch = threading.Event()

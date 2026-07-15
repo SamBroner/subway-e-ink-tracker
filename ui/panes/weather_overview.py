@@ -20,6 +20,14 @@ class WeatherOverviewPane(Pane):
 
     def _draw_weather_overview(self, surface: PaneSurface, weather_data: dict, now: datetime):
         """Render the enlarged current-weather card on the lower-right."""
+        if weather_data.get("source_unavailable", False):
+            surface.text(
+                (self.display.WIDTH - 18, self.weather.BOTTOM_SECTION_Y + 18),
+                "WEATHER OFFLINE",
+                font=fonts.get('small'),
+                fill=0,
+                anchor="rs",
+            )
         day_summary = None
         forecast_days = weather_data.get("forecast", {}).get("forecastday", [])
         if forecast_days:
