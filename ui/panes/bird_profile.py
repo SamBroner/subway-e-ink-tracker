@@ -22,8 +22,17 @@ class BirdProfilePane(Pane):
     def paint(self, surface: PaneSurface, ctx: RenderContext):
         birds = ctx.data.birds
         if birds is None or not birds.observations:
-            message = "BirdNET unreachable" if birds and birds.source_unavailable else "No bird profile"
-            surface.text((self.w // 2, self.h // 2), message, font=fonts.get("large"), fill=0, anchor="mm")
+            if birds is None:
+                message = "Bird data loading"
+            else:
+                message = "BirdNET unreachable" if birds.source_unavailable else "No bird profile"
+            surface.text(
+                (self.w // 2, self.h // 2),
+                message,
+                font=fonts.get("large"),
+                fill=0,
+                anchor="mm",
+            )
             return
 
         observation = birds.observations[0]

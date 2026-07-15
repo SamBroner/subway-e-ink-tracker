@@ -1,6 +1,8 @@
 import builtins
 
-from ui.touch_input import TouchEdgeDetector, start_touch_listener
+import pytest
+
+from ui.touch_input import TouchEdgeDetector, _run_touch_poll_loop, start_touch_listener
 
 
 class FakeChannel:
@@ -106,3 +108,28 @@ def test_start_touch_listener_missing_library_does_not_crash(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     assert not start_touch_listener(lambda: None)
+
+
+def test_touch_poll_loop_continues_after_poll_error():
+    class StopLoop(Exception):
+        pass
+
+    class FlakyDetector:
+        def __init__(self):
+            self.calls = 0
+
+        def poll_once(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise OSError("i2c glitch")
+
+    detector = FlakyDetector()
+
+    def sleep(_seconds):
+        if detector.calls >= 2:
+            raise StopLoop
+
+    with pytest.raises(StopLoop):
+        _run_touch_poll_loop(detector, poll_interval_seconds=0, sleep=sleep)
+
+    assert detector.calls == 2

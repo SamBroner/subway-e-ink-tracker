@@ -158,10 +158,22 @@ def test_runner_prewarms_remaining_screens_after_current_render():
 
     assert len(disp.prewarm_calls) == 1
     assert disp.prewarm_calls[0]["screen_names"] == [
-        "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
+    ]
+
+
+def test_runner_prewarm_skips_transit_after_bird_profile_render():
+    runner, disp, _ = _ready_prewarming_runner()
+    screen_manager.select(3)  # bird-profile
+
+    runner._check_display_update()
+
+    assert len(disp.prewarm_calls) == 1
+    assert disp.prewarm_calls[0]["screen_names"] == [
+        "bird-collage-named",
+        "birds",
     ]
 
 
@@ -240,7 +252,7 @@ def test_bike_update_alone_does_not_unblock_transit_but_is_kept():
     assert disp.calls[0]["app_data"].bikes == bikes
 
 
-def test_spacebar_advance_renders_bird_collage_without_transit_data():
+def test_spacebar_advance_renders_named_bird_collage_without_transit_data():
     disp = RecordingDisplay()
     runner = Runner(
         display=disp,
@@ -254,7 +266,27 @@ def test_spacebar_advance_renders_bird_collage_without_transit_data():
         "clear": False,
         "intent": DisplayIntent.SCREEN_TRANSITION,
         "now": runner.clock.now(),
-        "screen_name": "bird-collage",
+        "screen_name": "bird-collage-named",
+    }]
+
+
+def test_spacebar_advance_renders_named_bird_collage_before_bird_data_exists():
+    disp = RecordingDisplay()
+    runner = Runner(
+        display=disp,
+        clock=FakeClock(),
+        data_hub=DataHub(initial_data=AppData()),
+    )
+
+    runner._advance_screen()
+
+    assert disp.calls == [{
+        "app_data": AppData(),
+        "partial": False,
+        "clear": False,
+        "intent": DisplayIntent.SCREEN_TRANSITION,
+        "now": runner.clock.now(),
+        "screen_name": "bird-collage-named",
     }]
 
 
@@ -265,7 +297,6 @@ def test_spacebar_advance_cycles_through_all_screens():
         runner._advance_screen()
 
     assert [call["screen_name"] for call in disp.calls] == [
-        "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
@@ -274,36 +305,9 @@ def test_spacebar_advance_cycles_through_all_screens():
     assert all(call["intent"] == DisplayIntent.SCREEN_TRANSITION for call in disp.calls)
 
 
-def test_bird_collage_data_redraw_uses_full_refresh():
-    runner, disp, clock = _ready_runner()
-    screen_manager.select(1)  # bird-collage
-
-    runner._check_display_update()
-    clock.advance(2)
-    runner.data_hub.handle_bird_update(BirdResult(
-        observations=[
-            BirdObservation(
-                sci_name="Poecile atricapillus",
-                common_name="Black-capped Chickadee",
-                count=5,
-                last_seen="2026-06-11 22:41:10",
-                max_confidence=0.91,
-            )
-        ],
-        window_hours=24,
-    ))
-
-    assert disp.calls[0]["screen_name"] == "bird-collage"
-    assert disp.calls[0]["intent"] == DisplayIntent.SCREEN_TRANSITION
-    assert disp.calls[1]["screen_name"] == "bird-collage"
-    assert disp.calls[1]["clear"] is True
-    assert disp.calls[1]["partial"] is False
-    assert disp.calls[1]["intent"] == DisplayIntent.MAINTENANCE_CLEAR
-
-
 def test_named_bird_collage_data_redraw_uses_full_refresh():
     runner, disp, clock = _ready_runner()
-    screen_manager.select(2)  # bird-collage-named
+    screen_manager.select(1)  # bird-collage-named
 
     runner._check_display_update()
     clock.advance(2)
@@ -328,7 +332,7 @@ def test_named_bird_collage_data_redraw_uses_full_refresh():
 
 
 def test_bird_list_screen_does_not_redraw_each_tick_when_data_unchanged():
-    screen_manager.select(3)
+    screen_manager.select(2)
     clock = FakeClock()
     disp = RecordingDisplay()
     runner = Runner(display=disp, clock=clock, data_hub=DataHub(initial_data=AppData(birds=_bird_result())))

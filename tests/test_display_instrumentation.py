@@ -301,6 +301,59 @@ def test_display_prewarms_screens_sequentially(monkeypatch):
     assert render_calls == ["bird-collage", "bird-collage-named", "birds"]
 
 
+def test_prewarm_skips_transit_frames():
+    cache = RenderCache()
+    render_calls = []
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append(screen_name)
+        return _image()
+
+    cache.prewarm(
+        AppData(),
+        datetime(2026, 1, 15, 14, 23, 1),
+        ["transit", "birds"],
+        fake_render,
+    )
+
+    assert cache.wait_for_idle()
+    assert render_calls == ["birds"]
+
+
+def test_prewarm_spawns_when_old_thread_is_alive_but_not_running():
+    cache = RenderCache()
+    old_worker_started = threading.Event()
+    release_old_worker = threading.Event()
+    render_calls = []
+
+    def old_worker():
+        old_worker_started.set()
+        assert release_old_worker.wait(1)
+
+    old_thread = threading.Thread(target=old_worker)
+    old_thread.start()
+    assert old_worker_started.wait(1)
+    with cache._lock:
+        cache._worker = old_thread
+        cache._worker_running = False
+
+    def fake_render(app_data, now=None, screen_name=None):
+        render_calls.append(screen_name)
+        return _image()
+
+    cache.prewarm(
+        AppData(),
+        datetime(2026, 1, 15, 14, 23, 1),
+        ["birds"],
+        fake_render,
+    )
+    release_old_worker.set()
+    old_thread.join(1)
+
+    assert cache.wait_for_idle()
+    assert render_calls == ["birds"]
+
+
 def test_foreground_render_reuses_inflight_prewarm_result():
     cache = RenderCache()
     entered_render = threading.Event()

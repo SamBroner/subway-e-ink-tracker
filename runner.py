@@ -166,7 +166,7 @@ class Runner:
             logger.info(
                 f"[DISPLAY UPDATE] {screen_name} redraw ({time_since_update:.1f}s >= {self.min_interval}s)"
             )
-            if screen_name in {"bird-collage", "bird-collage-named"}:
+            if screen.profile.full_refresh_on_redraw:
                 self._update_display(
                     clear=True,
                     ctx=ctx,
@@ -237,7 +237,7 @@ class Runner:
         return [
             name
             for name in ordered
-            if self._screen_has_required_data(name, data)
+            if name != "transit" and self._screen_has_required_data(name, data)
         ]
 
     def _screen_has_required_data(self, screen_name: str, data: AppData) -> bool:

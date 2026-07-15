@@ -31,15 +31,22 @@ Full Post [here](https://sambroner.com/posts/raspberry-pi-train).
 
 ### Raspberry Pi Setup
 0. Figure out how you're going to connect to the Raspberry Pi
-1. Install UV
+1. Install uv and Git LFS
 2. Enable the SPI interface
 3. Attach the e-ink display to the Raspberry Pi
 
 ```bash
+git lfs install
 git clone https://github.com/SamBroner/subway-e-ink-tracker.git
 cd subway-e-ink-tracker
+git lfs pull
 uv sync
 ```
+
+Bird illustration assets are stored in Git LFS. If you skip `git lfs pull`, the
+transit display still runs, but bird screens will use missing-art placeholders.
+The illustrations were created by Sam Broner with Gemini image generation; see
+`assets/birds/README.md` for provenance notes.
 
 ### Installation
 1. Install uv (if not already installed)
@@ -73,6 +80,11 @@ local). Copy `config/.env.template` and fill it in:
 | `BIRD_ASSET_DIR` | no | Local bird illustration directory |
 | `BIRD_MOCK_DATA` | no | Local mock bird result JSON for debug rendering |
 | `BIRD_USE_MOCK_DATA` | no | `true` makes the bird service read `BIRD_MOCK_DATA` instead of SSH |
+| `WEATHER_UPDATE_SECONDS` | no | Weather feed refresh interval (defaults to `300`) |
+| `SUBWAY_UPDATE_SECONDS` | no | Subway feed refresh interval (defaults to `5`) |
+| `CITIBIKE_UPDATE_SECONDS` | no | Citi Bike feed refresh interval (defaults to `60`) |
+| `DISPLAY_MIN_INTERVAL_SECONDS` | no | Minimum interval for routine display redraws (defaults to `1`) |
+| `DISPLAY_CLEAR_COOLDOWN_SECONDS` | no | Cooldown after large display updates (defaults to `5`) |
 | `TOUCH_ENABLED` | no | `true` enables optional MPR121 capacitive touch screen switching |
 | `TOUCH_CHANNEL` | no | MPR121 electrode index to poll (defaults to `0`) |
 | `TOUCH_I2C_ADDRESS` | no | MPR121 I2C address (defaults to `0x5a`) |
@@ -85,6 +97,24 @@ for smoke tests such as `DEBUG=true QUIET_MODE=false uv run runner.py`.
 
 Find your Citi Bike station's UUID and name in the GBFS feed:
 <https://gbfs.citibikenyc.com/gbfs/en/station_information.json>
+
+### BirdNET-Pi Source
+
+Bird screens expect a separate BirdNET-Pi sensor that writes detections to
+SQLite. Configure the display Pi with a normal OpenSSH alias named `birdnet` and
+keep `BIRDNET_DB_PATH` pointed at the sensor database, usually
+`~/BirdNET-Pi/scripts/birds.db`.
+
+Verify the display Pi can read the sensor without interactive auth:
+
+```bash
+ssh -o BatchMode=yes birdnet 'hostname'
+ssh -o BatchMode=yes birdnet \
+  'sqlite3 -json ~/BirdNET-Pi/scripts/birds.db "SELECT COUNT(*) AS detections FROM detections;"'
+```
+
+The app treats BirdNET-Pi as read-only, groups recent rows from the `detections`
+table, and renders loading/offline states when the sensor is unreachable.
 
 ### Optional Touch Input
 
@@ -130,7 +160,6 @@ Screen switching cycles through:
 
 ```text
 transit
-bird-collage
 bird-collage-named
 birds
 bird-profile
@@ -152,15 +181,14 @@ framing and mounting technique, including how the Pi and ribbon cable tuck behin
 
 ## Testing
 
-The unit tests for the Citi Bike module use the stdlib `unittest`
-(no extra dependencies). Run them from the repo root:
+Run the full test suite from the repo root:
 
 ```bash
-uv run python -m unittest tests.test_citibike_service
+uv run pytest
 ```
 
-(The other scripts under `tests/` are manual Raspberry Pi hardware checks —
-SPI/GPIO and the e-ink display — and only run on the Pi.)
+Some hardware checks are Raspberry Pi-only and skip automatically when the
+required SPI/GPIO libraries are unavailable.
 
 ## CairoSVG
 
@@ -215,15 +243,29 @@ sudo systemctl stop subway-eink.service
 ├── services/
 │   ├── subway_service.py    # MTA arrivals
 │   ├── citibike_service.py  # Citi Bike availability
+│   ├── bird_service.py      # BirdNET-Pi SQLite-over-SSH observations
 │   ├── weather_service.py   # Open-Meteo weather
 │   └── weather_codes.py     # WMO weather code sets
 ├── ui/
 │   ├── display.py       # e-ink / debug display driver
 │   ├── layout.py        # screen layout + drawing
+│   ├── screens.py       # registered screens + screen switching order
+│   ├── render_cache.py  # in-memory rendered screen cache
 │   └── fonts.py         # font loading
 ├── assets/
 │   ├── fonts/           # Font.ttc
+│   ├── birds/           # BirdNET mock data + LFS illustration assets
 │   ├── bitmaps/         # display test bitmaps
 │   └── icons/           # weather + UI (bike, bolt) SVG icons
 └── tests/               # unit tests + Pi hardware checks
 ```
+
+## Follow-up TODOs
+
+- Remove the vendored `cairo-1.14.6/` tree and replace it with platform install notes.
+- Add a real weather-unavailable render path for degraded payloads missing `current`.
+- Add repo-level license metadata.
+- Add CI for `uv run pytest`.
+- Extract shared bird text fitting, count, and last-seen formatting helpers from the bird panes.
+- Re-evaluate `BirdCollagePane`'s private image cache now that screen frames also go through `RenderCache`.
+- If display queue metrics need it, track attempted renders separately from accepted frames; runner state intentionally reflects the last accepted frame today.

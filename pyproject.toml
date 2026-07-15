@@ -1,7 +1,7 @@
 [project]
 name = "subway-eink"
 version = "0.1.0"
-description = "Add your description here"
+description = "Raspberry Pi e-ink display for transit, weather, bike, and BirdNET observations"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

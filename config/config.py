@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,15 @@ class TimingConfig:
     DISPLAY_MIN_INTERVAL_SECONDS: int = 1
     DISPLAY_CLEAR_COOLDOWN_SECONDS: int = 5
 
+    def apply_env(self) -> None:
+        for field in fields(self):
+            field_name = field.name
+            setattr(
+                self,
+                field_name,
+                int(os.getenv(field_name, str(getattr(self, field_name)))),
+            )
+
 @dataclass
 class TimeConfig:
     def __init__(self, display: DisplayConfig, FONT_SIZES):
@@ -159,9 +168,7 @@ class Config:
         self.weather = WeatherConfig(self.display)
         self.subway = SubwayConfig(self.display)
         self.timing = TimingConfig()
-        self.timing.BIRD_UPDATE_SECONDS = int(
-            os.getenv('BIRD_UPDATE_SECONDS', str(self.timing.BIRD_UPDATE_SECONDS))
-        )
+        self.timing.apply_env()
         
         # Font sizes
         self.FONT_SIZES = {

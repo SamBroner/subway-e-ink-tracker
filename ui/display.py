@@ -16,6 +16,7 @@ import time
 from data.models import AppData
 from ui.layout import getImageFromAppData
 from ui.render_cache import RenderCache
+from ui.time_format import displayed_clock
 from config.config import config
 
 logger = logging.getLogger(__name__)
@@ -69,12 +70,6 @@ def _timestamp(value: float) -> str:
 def _safe_filename_part(value: str) -> str:
     safe = "".join(c if c.isalnum() else "-" for c in value.strip())
     return "-".join(part for part in safe.split("-") if part) or "unknown"
-
-
-def _displayed_clock(now: Optional[datetime]) -> str:
-    if now is None:
-        return ""
-    return now.strftime("%I:%M:%S%p").lstrip("0").lower()
 
 
 def _coerce_intent(intent: DisplayIntent | str | None, clear: bool) -> DisplayIntent:
@@ -546,7 +541,7 @@ class Display:
                 render_requested_at=now,
                 queued_at=queued_at,
                 sequence=self._next_frame_sequence(),
-                displayed_clock=_displayed_clock(now),
+                displayed_clock=displayed_clock(now, compact=True),
                 intent=display_intent,
             )
             queued = self._queue_frame(frame)

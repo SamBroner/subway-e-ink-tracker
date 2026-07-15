@@ -120,7 +120,18 @@ class BirdCollagePane(Pane):
         self._last_legend_entries = []
         self._occupied_boxes = []
         canvas = Image.new("L", (self.w, self.h), 255)
-        if birds is None or not birds.observations or self.w <= 0 or self.h <= 0:
+        if self.w <= 0 or self.h <= 0:
+            return canvas
+        if birds is None:
+            self._draw_empty_state(canvas, "Bird data loading")
+            return canvas
+        if not birds.observations:
+            message = (
+                "BirdNET unreachable"
+                if birds.source_unavailable
+                else f"No birds heard in {birds.window_hours}h"
+            )
+            self._draw_empty_state(canvas, message)
             return canvas
 
         observations = birds.observations[:15]
@@ -128,6 +139,16 @@ class BirdCollagePane(Pane):
         if self.named:
             return self._build_named_collage(observations, max_count)
         return self._build_unlabeled_collage(observations, max_count)
+
+    def _draw_empty_state(self, canvas: Image.Image, message: str) -> None:
+        draw = ImageDraw.Draw(canvas)
+        draw.text(
+            (self.w // 2, self.h // 2),
+            message,
+            font=fonts.get("large"),
+            fill=0,
+            anchor="mm",
+        )
 
     def _build_unlabeled_collage(
         self,

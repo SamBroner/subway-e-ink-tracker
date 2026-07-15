@@ -169,7 +169,7 @@ def test_bird_service_parses_ssh_sqlite_json(monkeypatch):
 def test_bird_service_keeps_last_good_data_on_failure(monkeypatch):
     service = BirdService()
     service.use_mock_data = False
-    service._current_result = BirdResult(
+    service._last_good_result = BirdResult(
         observations=[
             BirdObservation(
                 sci_name="Poecile atricapillus",
@@ -189,9 +189,61 @@ def test_bird_service_keeps_last_good_data_on_failure(monkeypatch):
 
     result = service.get_bird_observations()
 
-    assert result.observations == service._current_result.observations
+    assert result.observations == service._last_good_result.observations
     assert result.window_hours == 24
     assert result.source_unavailable
+
+
+def test_bird_service_does_not_notify_when_only_cached_source_state_flips():
+    service = BirdService()
+    previous = BirdResult(
+        observations=[
+            BirdObservation(
+                sci_name="Poecile atricapillus",
+                common_name="Black-capped Chickadee",
+                count=4,
+                last_seen="2026-06-11 22:40:10",
+                max_confidence=0.908,
+            )
+        ],
+        window_hours=24,
+        source_unavailable=False,
+    )
+    unavailable = BirdResult(
+        observations=previous.observations,
+        window_hours=previous.window_hours,
+        source_unavailable=True,
+    )
+
+    assert not service._should_notify(unavailable, previous)
+    assert not service._should_notify(previous, unavailable)
+
+
+def test_bird_stop_has_bounded_join_when_fetch_is_in_progress():
+    service = BirdService()
+    first_fetch = threading.Event()
+    release_fetch = threading.Event()
+
+    def blocked_fetch():
+        first_fetch.set()
+        assert release_fetch.wait(1)
+        return BirdResult(observations=[], window_hours=24)
+
+    service.get_bird_observations = blocked_fetch
+    service.start_updates(interval_seconds=60)
+    assert first_fetch.wait(1)
+
+    start = time.monotonic()
+    service.stop_updates(join_timeout_seconds=0.01)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.5
+    assert service._update_thread is not None
+    assert service._update_thread.is_alive()
+
+    release_fetch.set()
+    service._update_thread.join(1)
+    assert not service._update_thread.is_alive()
 
 
 def _assert_stop_interrupts_interval_sleep(service, first_fetch):

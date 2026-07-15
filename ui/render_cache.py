@@ -7,11 +7,13 @@ from dataclasses import fields, is_dataclass
 from datetime import datetime
 import logging
 import threading
+import time
 from typing import Any, Callable, Optional
 
 from PIL import Image
 
 from data.models import AppData
+from ui.time_format import displayed_clock
 
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ class RenderCache:
         self._generation = 0
         self._request: _PrewarmRequest | None = None
         self._worker: threading.Thread | None = None
+        self._worker_running = False
         self._active_signature: tuple[RenderKey, ...] | None = None
         self._pending_signature: tuple[RenderKey, ...] | None = None
         self._completed_signature: tuple[RenderKey, ...] | None = None
@@ -105,7 +108,7 @@ class RenderCache:
             return (
                 renderer_key,
                 screen_name,
-                _displayed_clock(now),
+                displayed_clock(now),
                 _freeze(app_data.weather),
                 _freeze(app_data.subway),
                 _freeze(app_data.bikes),
@@ -114,7 +117,7 @@ class RenderCache:
         return (
             renderer_key,
             screen_name,
-            _displayed_clock(now),
+            displayed_clock(now),
             _freeze(app_data),
         )
 
@@ -125,7 +128,13 @@ class RenderCache:
         screen_names: list[str],
         renderer: Renderer,
     ) -> None:
-        keys = tuple(self.key_for(app_data, now, screen_name, renderer) for screen_name in screen_names)
+        cacheable_screen_names = tuple(
+            screen_name for screen_name in screen_names if screen_name != "transit"
+        )
+        keys = tuple(
+            self.key_for(app_data, now, screen_name, renderer)
+            for screen_name in cacheable_screen_names
+        )
         if not keys:
             return
 
@@ -146,21 +155,25 @@ class RenderCache:
                 generation=generation,
                 app_data=app_data,
                 now=now,
-                screen_names=tuple(screen_names),
+                screen_names=cacheable_screen_names,
                 renderer=renderer,
                 signature=keys,
             )
-            if self._worker is None or not self._worker.is_alive():
-                self._worker = threading.Thread(target=self._prewarm_loop, name="render-prewarm")
-                self._worker.daemon = True
-                self._worker.start()
+            if not self._worker_running:
+                self._start_worker_locked()
 
     def wait_for_idle(self, timeout: float = 5.0) -> bool:
-        worker = self._worker
-        if worker is None:
-            return True
-        worker.join(timeout)
-        return not worker.is_alive()
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                worker = self._worker if self._worker_running else None
+            if worker is None:
+                return True
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            worker.join(remaining)
 
     def clear(self) -> None:
         with self._lock:
@@ -172,56 +185,74 @@ class RenderCache:
             self._completed_signature = None
 
     def _prewarm_loop(self) -> None:
-        while True:
-            with self._lock:
-                request = self._request
-                self._request = None
-                if request is None:
-                    self._active_signature = None
+        try:
+            while True:
+                with self._lock:
+                    request = self._request
+                    self._request = None
+                    if request is None:
+                        self._active_signature = None
+                        self._pending_signature = None
+                        self._mark_worker_stopped_locked()
+                        return
+                    self._active_signature = request.signature
                     self._pending_signature = None
-                    return
-                self._active_signature = request.signature
-                self._pending_signature = None
 
-            completed = True
-            logger.debug("Starting render prewarm for %s", ", ".join(request.screen_names))
-            for screen_name in request.screen_names:
-                with self._lock:
-                    if request.generation != self._generation:
+                completed = True
+                logger.debug("Starting render prewarm for %s", ", ".join(request.screen_names))
+                for screen_name in request.screen_names:
+                    with self._lock:
+                        if request.generation != self._generation:
+                            completed = False
+                            break
+
+                    key = self.key_for(request.app_data, request.now, screen_name, request.renderer)
+                    if self.contains(key):
+                        continue
+
+                    try:
+                        with self._render_lock:
+                            with self._lock:
+                                if request.generation != self._generation:
+                                    completed = False
+                                    break
+                            if self.contains(key):
+                                continue
+                            image = request.renderer(
+                                request.app_data,
+                                now=request.now,
+                                screen_name=screen_name,
+                            )
+                    except Exception:
+                        logger.exception("Error prewarming render cache for %s", screen_name)
                         completed = False
-                        break
+                        continue
 
-                key = self.key_for(request.app_data, request.now, screen_name, request.renderer)
-                if self.contains(key):
-                    continue
-
-                try:
-                    with self._render_lock:
-                        with self._lock:
-                            if request.generation != self._generation:
-                                completed = False
-                                break
-                        if self.contains(key):
-                            continue
-                        image = request.renderer(
-                            request.app_data,
-                            now=request.now,
-                            screen_name=screen_name,
-                        )
-                except Exception:
-                    logger.exception("Error prewarming render cache for %s", screen_name)
-                    completed = False
-                    continue
+                    with self._lock:
+                        if request.generation != self._generation:
+                            completed = False
+                            break
+                        self.put(key, image)
 
                 with self._lock:
-                    if request.generation != self._generation:
-                        completed = False
-                        break
-                    self.put(key, image)
-
+                    if completed and request.generation == self._generation:
+                        self._completed_signature = request.signature
+        finally:
             with self._lock:
-                if completed and request.generation == self._generation:
-                    self._completed_signature = request.signature
+                self._mark_worker_stopped_locked(restart_if_pending=True)
+
+    def _start_worker_locked(self) -> None:
+        self._worker_running = True
+        self._worker = threading.Thread(target=self._prewarm_loop, name="render-prewarm")
+        self._worker.daemon = True
+        self._worker.start()
+
+    def _mark_worker_stopped_locked(self, *, restart_if_pending: bool = False) -> None:
+        if self._worker is threading.current_thread():
+            self._worker = None
+            self._worker_running = False
+            if restart_if_pending and self._request is not None:
+                self._start_worker_locked()
 
 
 class _PrewarmRequest:
@@ -241,12 +272,6 @@ class _PrewarmRequest:
         self.screen_names = screen_names
         self.renderer = renderer
         self.signature = signature
-
-
-def _displayed_clock(now: Optional[datetime]) -> str:
-    if now is None:
-        return ""
-    return now.strftime("%I:%M:%S%p")
 
 
 def _freeze(value: Any) -> Any:

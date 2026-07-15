@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import datetime, timedelta
 import math
+from pathlib import Path
 
 from PIL import Image
 
@@ -10,7 +11,10 @@ from services.subway_service import TrainArrival
 from services.subway_service import SubwayResult
 from ui.panes import BirdCollagePane, BirdPane, BirdProfilePane, RenderContext
 from ui.panes.bird_art import BirdArtLoader
-from ui.screens import screen_manager
+from ui.screens import build_bird_collage_screen, screen_manager
+
+
+BIRD_ART_DIR = Path(__file__).parent / "fixtures" / "bird_art"
 
 
 def _ctx(**overrides):
@@ -96,7 +100,7 @@ def _empty_birds(unavailable: bool = False) -> BirdResult:
     return BirdResult(observations=[], window_hours=24, source_unavailable=unavailable)
 
 
-def _render_pane(pane, birds: BirdResult) -> Image.Image:
+def _render_pane(pane, birds: BirdResult | None) -> Image.Image:
     frame = Image.new("L", (config.display.WIDTH, config.display.HEIGHT), 255)
     pane.render(
         frame,
@@ -139,15 +143,15 @@ def _label_overlaps_bird_alpha(label_box, placement) -> bool:
 def test_screen_requirements_and_exact_order():
     assert screen_manager.names() == [
         "transit",
-        "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
     ]
     assert "hello" not in screen_manager.names()
+    assert "bird-collage" not in screen_manager.names()
     assert screen_manager.get("transit").requires() == {"weather", "subway"}
-    for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
-        assert screen_manager.get(name).requires() == {"birds"}
+    for name in ("bird-collage-named", "birds", "bird-profile"):
+        assert screen_manager.get(name).requires() == set()
 
 
 def test_transit_redraws_when_displayed_time_changes():
@@ -194,12 +198,17 @@ def test_bird_screens_redraw_when_observations_change():
         window_hours=24,
     )))
 
-    for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
+    assert build_bird_collage_screen().should_redraw(current, prev)
+    for name in ("bird-collage-named", "birds", "bird-profile"):
         assert screen_manager.get(name).should_redraw(current, prev)
 
 
 def test_unlabeled_collage_renders_without_labels():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=False)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+        named=False,
+    )
     frame = _render_pane(pane, _bird_fixtures())
 
     assert frame.getextrema()[0] < 255
@@ -207,8 +216,33 @@ def test_unlabeled_collage_renders_without_labels():
     assert all(placement.label_box is None for placement in pane._last_placements)
 
 
+def test_collage_draws_loading_and_empty_states(tmp_path):
+    panes = [
+        BirdCollagePane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+            named=False,
+        ),
+        BirdCollagePane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+            named=True,
+        ),
+    ]
+
+    for pane in panes:
+        for birds in (None, _empty_birds(), _empty_birds(unavailable=True)):
+            frame = _render_pane(pane, birds)
+            assert frame.size == (config.display.WIDTH, config.display.HEIGHT)
+            assert frame.getextrema()[0] < 255
+
+
 def test_unlabeled_collage_uses_recency_for_placement_and_count_for_size():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=False)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+        named=False,
+    )
     _render_pane(pane, _fifteen_bird_fixtures())
 
     placements = pane._last_placements
@@ -222,17 +256,28 @@ def test_unlabeled_collage_uses_recency_for_placement_and_count_for_size():
 
 
 def test_named_collage_renders_full_common_names_without_ellipsis_and_allows_two_lines():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=True)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+        named=True,
+    )
     frame = _render_pane(pane, _bird_fixtures(include_missing=False))
 
     assert frame.getextrema()[0] < 255
     label_texts = [" ".join(placement.label_lines) for placement in pane._last_placements]
     assert "Black-throated Green Warbler" in label_texts
-    assert all("..." not in line for placement in pane._last_placements for line in placement.label_lines)
+    assert all(
+        "..." not in line
+        for placement in pane._last_placements
+        for line in placement.label_lines
+    )
 
 
 def test_named_collage_supports_two_and_three_line_label_layouts():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=True)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        named=True,
+    )
 
     two_line_layouts = pane._label_layouts("Black-throated Green Warbler", 120)
     three_line_layouts = pane._label_layouts("Very Long Black-throated Green Warbler", 110)
@@ -242,7 +287,11 @@ def test_named_collage_supports_two_and_three_line_label_layouts():
 
 
 def test_named_collage_places_most_recent_bird_closest_to_center():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=True)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+        named=True,
+    )
     _render_pane(pane, _fifteen_bird_fixtures())
 
     placements = pane._last_placements
@@ -252,7 +301,11 @@ def test_named_collage_places_most_recent_bird_closest_to_center():
 
 
 def test_named_collage_labels_stay_on_canvas_and_do_not_overlap_birds_or_labels():
-    pane = BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), named=True)
+    pane = BirdCollagePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+        named=True,
+    )
     _render_pane(pane, _bird_fixtures(include_missing=False))
 
     placements = [placement for placement in pane._last_placements if placement.label_box is not None]
@@ -277,12 +330,19 @@ def test_named_collage_uses_legend_fallback_when_attached_labels_cannot_fit():
     observations = [
         replace(
             observation,
-            common_name=f"Unbreakablylongfallbacklabel{idx}",
+            common_name=f"Unbreakablylongfallbacklabelrequiringlegendfallback{idx}",
         )
-        for idx, observation in enumerate(_bird_fixtures(include_missing=False).observations[:4], start=1)
+        for idx, observation in enumerate(
+            _bird_fixtures(include_missing=False).observations[:4],
+            start=1,
+        )
     ]
     birds = BirdResult(observations=observations, window_hours=24)
-    pane = BirdCollagePane((0, 0, 220, 320), named=True)
+    pane = BirdCollagePane(
+        (0, 0, 220, 320),
+        asset_dir=BIRD_ART_DIR,
+        named=True,
+    )
     frame = _render_pane(pane, birds)
 
     assert frame.size == (config.display.WIDTH, config.display.HEIGHT)
@@ -294,7 +354,10 @@ def test_named_collage_uses_legend_fallback_when_attached_labels_cannot_fit():
 
 
 def test_bird_list_screen_draws_only_five_and_includes_latin_names():
-    pane = BirdPane((0, 0, config.display.WIDTH, config.display.HEIGHT))
+    pane = BirdPane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+    )
     seen = []
     original_draw = pane._draw_fit_text
 
@@ -312,7 +375,10 @@ def test_bird_list_screen_draws_only_five_and_includes_latin_names():
 
 
 def test_bird_list_screen_has_no_clipped_names():
-    pane = BirdPane((0, 0, config.display.WIDTH, config.display.HEIGHT))
+    pane = BirdPane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+    )
     frame = _render_pane(pane, _bird_fixtures())
 
     assert frame.size == (config.display.WIDTH, config.display.HEIGHT)
@@ -328,17 +394,26 @@ def test_bird_list_screen_uses_same_art_variant_as_collage():
             self.calls.append((sci_name, variant, index))
             return None
 
-    pane = BirdPane((0, 0, config.display.WIDTH, config.display.HEIGHT))
+    pane = BirdPane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+    )
     loader = RecordingLoader()
     pane._art_loader = loader
 
-    _render_pane(pane, BirdResult(observations=_bird_fixtures().observations[:1], window_hours=24))
+    _render_pane(
+        pane,
+        BirdResult(observations=_bird_fixtures().observations[:1], window_hours=24),
+    )
 
     assert loader.calls == [("Turdus migratorius", "mixed", None)]
 
 
 def test_bird_profile_renders_most_recent_bird():
-    pane = BirdProfilePane((0, 0, config.display.WIDTH, config.display.HEIGHT))
+    pane = BirdProfilePane(
+        (0, 0, config.display.WIDTH, config.display.HEIGHT),
+        asset_dir=BIRD_ART_DIR,
+    )
     seen = []
     original_draw = pane._draw_fit_text
 
@@ -356,10 +431,24 @@ def test_bird_profile_renders_most_recent_bird():
 
 def test_all_bird_screens_handle_empty_unavailable_and_missing_art(tmp_path):
     pane_specs = [
-        BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), asset_dir=tmp_path, named=False),
-        BirdCollagePane((0, 0, config.display.WIDTH, config.display.HEIGHT), asset_dir=tmp_path, named=True),
-        BirdPane((0, 0, config.display.WIDTH, config.display.HEIGHT), asset_dir=tmp_path),
-        BirdProfilePane((0, 0, config.display.WIDTH, config.display.HEIGHT), asset_dir=tmp_path),
+        BirdCollagePane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+            named=False,
+        ),
+        BirdCollagePane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+            named=True,
+        ),
+        BirdPane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+        ),
+        BirdProfilePane(
+            (0, 0, config.display.WIDTH, config.display.HEIGHT),
+            asset_dir=tmp_path,
+        ),
     ]
 
     for pane in pane_specs:
@@ -369,7 +458,7 @@ def test_all_bird_screens_handle_empty_unavailable_and_missing_art(tmp_path):
 
 
 def test_art_loader_variant_policy_is_deterministic():
-    loader = BirdArtLoader()
+    loader = BirdArtLoader(asset_dir=BIRD_ART_DIR)
 
     base = loader.load("Poecile atricapillus", variant="base")
     alternate = loader.load("Poecile atricapillus", variant="alternate")
@@ -383,7 +472,7 @@ def test_art_loader_variant_policy_is_deterministic():
 
 
 def test_art_loader_reuses_resized_tile_cache():
-    loader = BirdArtLoader()
+    loader = BirdArtLoader(asset_dir=BIRD_ART_DIR)
 
     first = loader.load_tile("Poecile atricapillus", variant="mixed", target_width=120)
     second = loader.load_tile("Poecile atricapillus", variant="mixed", target_width=120)
