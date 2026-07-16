@@ -139,11 +139,11 @@ def _label_overlaps_bird_alpha(label_box, placement) -> bool:
 def test_screen_requirements_and_exact_order():
     assert screen_manager.names() == [
         "transit",
+        "all-in-one",
         "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
-        "all-in-one",
     ]
     assert "hello" not in screen_manager.names()
     assert screen_manager.get("transit").requires() == {"weather", "subway"}

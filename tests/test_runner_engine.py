@@ -158,11 +158,11 @@ def test_runner_prewarms_remaining_screens_after_current_render():
 
     assert len(disp.prewarm_calls) == 1
     assert disp.prewarm_calls[0]["screen_names"] == [
+        "all-in-one",
         "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
-        "all-in-one",
     ]
 
 
@@ -249,6 +249,7 @@ def test_spacebar_advance_renders_bird_collage_without_transit_data():
         data_hub=DataHub(initial_data=AppData(birds=_bird_result())),
     )
     runner._advance_screen()
+    runner._advance_screen()
     assert disp.calls == [{
         "app_data": AppData(birds=_bird_result()),
         "partial": False,
@@ -266,11 +267,11 @@ def test_spacebar_advance_cycles_through_all_screens():
         runner._advance_screen()
 
     assert [call["screen_name"] for call in disp.calls] == [
+        "all-in-one",
         "bird-collage",
         "bird-collage-named",
         "birds",
         "bird-profile",
-        "all-in-one",
         "transit",
     ]
     assert all(call["intent"] == DisplayIntent.SCREEN_TRANSITION for call in disp.calls)
@@ -278,7 +279,7 @@ def test_spacebar_advance_cycles_through_all_screens():
 
 def test_bird_collage_data_redraw_uses_full_refresh():
     runner, disp, clock = _ready_runner()
-    screen_manager.select(1)  # bird-collage
+    screen_manager.select(2)  # bird-collage
 
     runner._check_display_update()
     clock.advance(2)
@@ -305,7 +306,7 @@ def test_bird_collage_data_redraw_uses_full_refresh():
 
 def test_named_bird_collage_data_redraw_uses_full_refresh():
     runner, disp, clock = _ready_runner()
-    screen_manager.select(2)  # bird-collage-named
+    screen_manager.select(3)  # bird-collage-named
 
     runner._check_display_update()
     clock.advance(2)
@@ -330,7 +331,7 @@ def test_named_bird_collage_data_redraw_uses_full_refresh():
 
 
 def test_bird_list_screen_does_not_redraw_each_tick_when_data_unchanged():
-    screen_manager.select(3)
+    screen_manager.select(4)
     clock = FakeClock()
     disp = RecordingDisplay()
     runner = Runner(display=disp, clock=clock, data_hub=DataHub(initial_data=AppData(birds=_bird_result())))
