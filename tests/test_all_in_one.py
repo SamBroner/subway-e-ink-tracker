@@ -65,18 +65,47 @@ def test_solar_events_drive_day_twilight_and_night_weights():
 def test_bird_layer_preserves_complete_collage_and_rises_into_arch():
     pane = _pane()
     birds = fx.make_birds()
+    weather = fx.make_weather(
+        current_code=fx.CODE_HEAVY_RAIN,
+        current_precip=91,
+        hourly_code=fx.CODE_HEAVY_RAIN,
+        hourly_precip=78,
+        hourly_rain_mm=2.0,
+    )
+    stations = pane._forecast_stations(weather, fx.FIXED_NOW)
+    events = pane._solar_events(weather, fx.FIXED_NOW)
+    exclusions = pane._forecast_exclusion_mask(stations, events, fx.FIXED_NOW)
     frame = Image.new("L", (pane.w, pane.h), 255)
     surface = PaneSurface(frame, (0, 0))
     context = RenderContext(data=AppData(birds=birds), now=fx.FIXED_NOW)
 
-    pane._draw_birds(surface, context)
+    pane._draw_birds(surface, context, exclusions)
 
-    source = pane._bird_pane.collage_image(birds)
+    source = pane._bird_pane.collage_image(birds, exclusions)
     rendered = frame.crop((0, pane.BIRD_Y, pane.w, pane.BIRD_Y + pane.BIRD_HEIGHT))
     assert ImageChops.difference(rendered, source).getbbox() is None
 
     top_ink = ImageChops.invert(rendered.crop((0, 0, pane.w, 50)))
     assert top_ink.getbbox() is not None
+    assert len(pane._bird_pane._last_placements) == len(birds.observations[:15])
+
+    for placement in pane._bird_pane._last_placements:
+        assert placement.bird_mask is not None
+        bird_x, bird_y = placement.bird_origin
+        region = exclusions.crop(
+            (
+                bird_x,
+                bird_y,
+                bird_x + placement.bird_mask.width,
+                bird_y + placement.bird_mask.height,
+            )
+        )
+        assert ImageChops.multiply(region, placement.bird_mask).getbbox() is None
+
+    for index in (1, len(stations) - 1):
+        x, y = pane._arc_point(pane.ARC_STATION_T[index])
+        _time_y, _temp_y, precip_y = pane._station_text_y(index, len(stations), y)
+        assert exclusions.getpixel((round(x), round(precip_y - pane.BIRD_Y))) == 255
 
 
 def test_weather_service_keeps_solar_times_in_forecast_days():

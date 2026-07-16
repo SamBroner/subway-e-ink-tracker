@@ -67,6 +67,9 @@ class AllInOnePane(Pane):
     TWILIGHT_MINUTES = 30
     BIRD_Y = 160
     BIRD_HEIGHT = 925
+    FORECAST_CLEARANCE = 5
+    FORECAST_ICON_RADIUS = 34
+    TEXT_BACKING_PADDING = 2
     BOTTOM_Y = 1158
 
     def __init__(self, rect: tuple[int, int, int, int]):
@@ -79,9 +82,10 @@ class AllInOnePane(Pane):
         weather = ctx.data.weather or {}
         stations = self._forecast_stations(weather, ctx.now)
         events = self._solar_events(weather, ctx.now)
+        bird_exclusions = self._forecast_exclusion_mask(stations, events, ctx.now)
 
         self._draw_header(surface, weather, ctx.now)
-        self._draw_birds(surface, ctx)
+        self._draw_birds(surface, ctx, bird_exclusions)
         self._draw_ribbon(surface, stations, events, weather, ctx.now)
         self._draw_stations(surface, stations)
         self._draw_solar_event_times(surface, events, ctx.now)
@@ -114,11 +118,66 @@ class AllInOnePane(Pane):
         surface.text((750, 36), time_text, font=fonts.get("header"), fill=0, anchor="ra")
         surface.text((754, 80), seconds_text, font=fonts.get("small"), fill=0, anchor="ls")
 
-    def _draw_birds(self, surface: PaneSurface, ctx: RenderContext) -> None:
-        collage = self._bird_pane.collage_image(ctx.data.birds)
+    def _draw_birds(
+        self,
+        surface: PaneSurface,
+        ctx: RenderContext,
+        exclusion_mask: Image.Image | None = None,
+    ) -> None:
+        collage = self._bird_pane.collage_image(ctx.data.birds, exclusion_mask)
         bird_ink = ImageChops.invert(collage)
         black = Image.new("L", collage.size, 0)
         surface.paste(black, (0, self.BIRD_Y), bird_ink)
+
+    def _forecast_exclusion_mask(
+        self,
+        stations: list[ForecastStation],
+        events: list[datetime],
+        now: datetime,
+    ) -> Image.Image:
+        """Reserve the actual foreground geometry before packing the birds."""
+        mask = Image.new("L", (self.w, self.BIRD_HEIGHT), 0)
+        draw = ImageDraw.Draw(mask)
+
+        def reserve_box(box: tuple[int, int, int, int]) -> None:
+            clearance = self.FORECAST_CLEARANCE
+            draw.rectangle(
+                (
+                    box[0] - clearance,
+                    box[1] - self.BIRD_Y - clearance,
+                    box[2] + clearance,
+                    box[3] - self.BIRD_Y + clearance,
+                ),
+                fill=255,
+            )
+
+        for index, (station, t) in enumerate(zip(stations, self.ARC_STATION_T)):
+            x, y = self._arc_point(t)
+            radius = self.FORECAST_ICON_RADIUS
+            draw.ellipse(
+                (x - radius, y - self.BIRD_Y - radius, x + radius, y - self.BIRD_Y + radius),
+                fill=255,
+            )
+
+            time_y, temp_y, precip_y = self._station_text_y(index, len(stations), y)
+            labels = [
+                ((x, time_y), station.when.strftime("%-I%p").lower(), fonts.get("small")),
+                ((x, temp_y), self._temperature_text(station.temperature), fonts.get("medium")),
+            ]
+            if station.precipitation > 0:
+                labels.append(((x, precip_y), f"{station.precipitation}%", fonts.get("small")))
+            for xy, text, font in labels:
+                reserve_box(self._backed_text_box(xy, text, font))
+
+        total_seconds = self.FORECAST_HOURS * 3600
+        for event in events:
+            t = (event - self._local_naive(now)).total_seconds() / total_seconds
+            if not 0 < t < 1:
+                continue
+            x, y = self._arc_point(t)
+            reserve_box(self._text_box((x, y - 23), event.strftime("%-I:%M"), fonts.get("small")))
+
+        return mask
 
     def _draw_ribbon(
         self,
@@ -168,13 +227,7 @@ class AllInOnePane(Pane):
             except (FileNotFoundError, KeyError, OSError):
                 surface.ellipse((x - 8, y - 8, x + 8, y + 8), outline=0, width=2)
 
-            time_y = y - 39
-            temp_y = y + 48
-            precip_y = y + 70
-            if index == len(stations) - 1:
-                time_y = y - 52
-                temp_y = y + 43
-                precip_y = y + 65
+            time_y, temp_y, precip_y = self._station_text_y(index, len(stations), y)
 
             self._draw_backed_text(
                 surface,
@@ -195,6 +248,12 @@ class AllInOnePane(Pane):
                     f"{station.precipitation}%",
                     fonts.get("small"),
                 )
+
+    @staticmethod
+    def _station_text_y(index: int, station_count: int, y: float) -> tuple[float, float, float]:
+        if index == station_count - 1:
+            return (y - 52, y + 43, y + 65)
+        return (y - 39, y + 48, y + 70)
 
     def _draw_solar_event_times(
         self,
@@ -398,13 +457,34 @@ class AllInOnePane(Pane):
         return lines
 
     @staticmethod
-    def _draw_backed_text(surface: PaneSurface, xy: tuple[float, float], text: str, font) -> None:
-        bbox = surface.textbbox(xy, text, font=font, anchor="ms")
-        padding = 2
-        width = max(1, int(math.ceil(bbox[2] - bbox[0] + padding * 2)))
-        height = max(1, int(math.ceil(bbox[3] - bbox[1] + padding * 2)))
+    def _text_box(xy: tuple[float, float], text: str, font) -> tuple[int, int, int, int]:
+        draw = ImageDraw.Draw(Image.new("L", (1, 1), 255))
+        bbox = draw.textbbox(xy, text, font=font, anchor="ms")
+        return (
+            int(math.floor(bbox[0])),
+            int(math.floor(bbox[1])),
+            int(math.ceil(bbox[2])),
+            int(math.ceil(bbox[3])),
+        )
+
+    @classmethod
+    def _backed_text_box(cls, xy: tuple[float, float], text: str, font) -> tuple[int, int, int, int]:
+        bbox = cls._text_box(xy, text, font)
+        padding = cls.TEXT_BACKING_PADDING
+        return (
+            bbox[0] - padding,
+            bbox[1] - padding,
+            bbox[2] + padding,
+            bbox[3] + padding,
+        )
+
+    @classmethod
+    def _draw_backed_text(cls, surface: PaneSurface, xy: tuple[float, float], text: str, font) -> None:
+        box = cls._backed_text_box(xy, text, font)
+        width = max(1, box[2] - box[0])
+        height = max(1, box[3] - box[1])
         surface.paste(
             Image.new("L", (width, height), 255),
-            (int(math.floor(bbox[0] - padding)), int(math.floor(bbox[1] - padding))),
+            (box[0], box[1]),
         )
         surface.text(xy, text, font=font, fill=0, anchor="ms")

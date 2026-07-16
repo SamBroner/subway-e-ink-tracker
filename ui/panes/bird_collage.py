@@ -1,5 +1,6 @@
 """Full-screen bird illustration collage panes."""
 
+import hashlib
 import logging
 import math
 from dataclasses import dataclass
@@ -87,23 +88,37 @@ class BirdCollagePane(Pane):
         self._last_placements: list[Placement] = []
         self._last_legend_entries: list[LegendEntry] = []
         self._occupied_boxes: list[Rect] = []
+        self._exclusion_mask = Image.new("L", (self.w, self.h), 0)
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
         surface.paste(self.collage_image(ctx.data.birds), (self.x, self.y))
 
-    def collage_image(self, birds: BirdResult | None) -> Image.Image:
-        """Return the cached collage so composite panes can reuse this layout."""
-        key = self._cache_key(birds)
+    def collage_image(
+        self,
+        birds: BirdResult | None,
+        exclusion_mask: Image.Image | None = None,
+    ) -> Image.Image:
+        """Return a collage packed around any composite-pane reservations."""
+        exclusion_mask = self._normalize_exclusion_mask(exclusion_mask)
+        key = self._cache_key(birds, exclusion_mask)
         if self._cached_image is None or key != self._cached_key:
-            self._cached_image = self._build_collage(birds)
+            self._cached_image = self._build_collage(birds, exclusion_mask)
             self._cached_key = key
         return self._cached_image
 
-    def _cache_key(self, birds: BirdResult | None) -> tuple:
+    def _cache_key(
+        self,
+        birds: BirdResult | None,
+        exclusion_mask: Image.Image | None = None,
+    ) -> tuple:
+        exclusion_key = None
+        if exclusion_mask is not None:
+            exclusion_key = hashlib.blake2b(exclusion_mask.tobytes(), digest_size=8).digest()
         if birds is None:
-            return (None, self.named)
+            return (None, self.named, exclusion_key)
         return (
             self.named,
+            exclusion_key,
             birds.window_hours,
             birds.source_unavailable,
             tuple(
@@ -118,10 +133,39 @@ class BirdCollagePane(Pane):
             ),
         )
 
-    def _build_collage(self, birds: BirdResult | None) -> Image.Image:
+    def _normalize_exclusion_mask(self, exclusion_mask: Image.Image | None) -> Image.Image | None:
+        if exclusion_mask is None:
+            return None
+        if exclusion_mask.size != (self.w, self.h):
+            raise ValueError(
+                f"exclusion mask must be {(self.w, self.h)}, got {exclusion_mask.size}"
+            )
+        return exclusion_mask.convert("L")
+
+    def _initial_occupancy(self, exclusion_mask: Image.Image | None) -> Image.Image:
+        occupancy = Image.new("L", (self.w, self.h), 0)
+        self._occupied_boxes = []
+        self._exclusion_mask = (
+            exclusion_mask if exclusion_mask is not None else Image.new("L", (self.w, self.h), 0)
+        )
+        if exclusion_mask is not None:
+            occupancy.paste(exclusion_mask)
+            exclusion_box = exclusion_mask.getbbox()
+            if exclusion_box is not None:
+                self._occupied_boxes.append(exclusion_box)
+        return occupancy
+
+    def _build_collage(
+        self,
+        birds: BirdResult | None,
+        exclusion_mask: Image.Image | None = None,
+    ) -> Image.Image:
         self._last_placements = []
         self._last_legend_entries = []
         self._occupied_boxes = []
+        self._exclusion_mask = (
+            exclusion_mask if exclusion_mask is not None else Image.new("L", (self.w, self.h), 0)
+        )
         canvas = Image.new("L", (self.w, self.h), 255)
         if birds is None or not birds.observations or self.w <= 0 or self.h <= 0:
             return canvas
@@ -129,17 +173,17 @@ class BirdCollagePane(Pane):
         observations = birds.observations[:15]
         max_count = max(1, max(max(1, observation.count) for observation in observations))
         if self.named:
-            return self._build_named_collage(observations, max_count)
-        return self._build_unlabeled_collage(observations, max_count)
+            return self._build_named_collage(observations, max_count, exclusion_mask)
+        return self._build_unlabeled_collage(observations, max_count, exclusion_mask)
 
     def _build_unlabeled_collage(
         self,
         observations: list[BirdObservation],
         max_count: int,
+        exclusion_mask: Image.Image | None = None,
     ) -> Image.Image:
         canvas = Image.new("L", (self.w, self.h), 255)
-        occupancy = Image.new("L", (self.w, self.h), 0)
-        self._occupied_boxes = []
+        occupancy = self._initial_occupancy(exclusion_mask)
 
         for observation in observations:
             target_width = self._target_width(observation, max_count)
@@ -184,22 +228,23 @@ class BirdCollagePane(Pane):
         self,
         observations: list[BirdObservation],
         max_count: int,
+        exclusion_mask: Image.Image | None = None,
     ) -> Image.Image:
-        attached = self._attempt_named_attached_pass(observations, max_count)
+        attached = self._attempt_named_attached_pass(observations, max_count, exclusion_mask)
         if attached is not None:
             return attached
-        return self._build_named_with_legend(observations, max_count)
+        return self._build_named_with_legend(observations, max_count, exclusion_mask)
 
     def _attempt_named_attached_pass(
         self,
         observations: list[BirdObservation],
         max_count: int,
+        exclusion_mask: Image.Image | None = None,
     ) -> Image.Image | None:
         canvas = Image.new("L", (self.w, self.h), 255)
-        occupancy = Image.new("L", (self.w, self.h), 0)
+        occupancy = self._initial_occupancy(exclusion_mask)
         placements_before = list(self._last_placements)
         occupied_boxes_before = list(self._occupied_boxes)
-        self._occupied_boxes = []
 
         for observation in observations:
             if not self._place_named_attached(canvas, occupancy, observation, max_count):
@@ -213,12 +258,12 @@ class BirdCollagePane(Pane):
         self,
         observations: list[BirdObservation],
         max_count: int,
+        exclusion_mask: Image.Image | None = None,
     ) -> Image.Image:
         self._last_placements = []
         self._last_legend_entries = []
-        self._occupied_boxes = []
         canvas = Image.new("L", (self.w, self.h), 255)
-        occupancy = Image.new("L", (self.w, self.h), 0)
+        occupancy = self._initial_occupancy(exclusion_mask)
         legend_rect = self._legend_rect()
         if legend_rect is not None:
             legend_mask = Image.new("L", (legend_rect[2] - legend_rect[0], legend_rect[3] - legend_rect[1]), 255)
@@ -494,6 +539,8 @@ class BirdCollagePane(Pane):
         for x, y in (*edge_candidates, *grid_candidates):
             x = min(max(0, x), self.w - pw)
             y = min(max(0, y), self.h - ph)
+            if self._overlap_score(probe, self._exclusion_mask, x, y) > 0:
+                continue
             score = self._overlap_score(probe, occupancy, x, y)
             if score == 0:
                 return (x, y)
