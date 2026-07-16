@@ -187,7 +187,7 @@ class AllInOnePane(Pane):
                 continue
             x, y = self._arc_point(t)
             label_xy = self._solar_event_label_position(t, x, y)
-            label = f"{event.kind.upper()} {event.when.strftime('%-I:%M')}"
+            label = event.when.strftime("%-I:%M")
             reserve_box(self._backed_text_box(label_xy, label, fonts.get("small")))
 
         return mask
@@ -300,7 +300,7 @@ class AllInOnePane(Pane):
             self._draw_backed_text(
                 surface,
                 label_xy,
-                f"{event.kind.upper()} {event.when.strftime('%-I:%M')}",
+                event.when.strftime("%-I:%M"),
                 font=fonts.get("small"),
             )
 
