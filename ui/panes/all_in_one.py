@@ -56,6 +56,12 @@ class ForecastStation:
         return bool(self.report.get("is_day", 1))
 
 
+@dataclass(frozen=True)
+class SolarEvent:
+    when: datetime
+    kind: str
+
+
 class AllInOnePane(Pane):
     """Render the forecast-origin punched ribbon around the bird collage."""
 
@@ -132,7 +138,7 @@ class AllInOnePane(Pane):
     def _forecast_exclusion_mask(
         self,
         stations: list[ForecastStation],
-        events: list[datetime],
+        events: list[SolarEvent],
         now: datetime,
     ) -> Image.Image:
         """Reserve the actual foreground geometry before packing the birds."""
@@ -159,23 +165,30 @@ class AllInOnePane(Pane):
                 fill=255,
             )
 
-            time_y, temp_y, precip_y = self._station_text_y(index, len(stations), y)
+            time_xy, temp_xy, precip_xy = self._station_label_positions(
+                index,
+                len(stations),
+                x,
+                y,
+            )
             labels = [
-                ((x, time_y), station.when.strftime("%-I%p").lower(), fonts.get("small")),
-                ((x, temp_y), self._temperature_text(station.temperature), fonts.get("medium")),
+                (time_xy, station.when.strftime("%-I%p").lower(), fonts.get("small")),
+                (temp_xy, self._temperature_text(station.temperature), fonts.get("medium")),
             ]
             if station.precipitation > 0:
-                labels.append(((x, precip_y), f"{station.precipitation}%", fonts.get("small")))
+                labels.append((precip_xy, f"{station.precipitation}%", fonts.get("small")))
             for xy, text, font in labels:
                 reserve_box(self._backed_text_box(xy, text, font))
 
         total_seconds = self.FORECAST_HOURS * 3600
         for event in events:
-            t = (event - self._local_naive(now)).total_seconds() / total_seconds
+            t = (event.when - self._local_naive(now)).total_seconds() / total_seconds
             if not 0 < t < 1:
                 continue
             x, y = self._arc_point(t)
-            reserve_box(self._text_box((x, y - 23), event.strftime("%-I:%M"), fonts.get("small")))
+            label_xy = self._solar_event_label_position(t, x, y)
+            label = f"{event.kind.upper()} {event.when.strftime('%-I:%M')}"
+            reserve_box(self._backed_text_box(label_xy, label, fonts.get("small")))
 
         return mask
 
@@ -183,7 +196,7 @@ class AllInOnePane(Pane):
         self,
         surface: PaneSurface,
         stations: list[ForecastStation],
-        events: list[datetime],
+        events: list[SolarEvent],
         weather: dict,
         now: datetime,
     ) -> None:
@@ -227,53 +240,68 @@ class AllInOnePane(Pane):
             except (FileNotFoundError, KeyError, OSError):
                 surface.ellipse((x - 8, y - 8, x + 8, y + 8), outline=0, width=2)
 
-            time_y, temp_y, precip_y = self._station_text_y(index, len(stations), y)
+            time_xy, temp_xy, precip_xy = self._station_label_positions(
+                index,
+                len(stations),
+                x,
+                y,
+            )
 
             self._draw_backed_text(
                 surface,
-                (x, time_y),
+                time_xy,
                 station.when.strftime("%-I%p").lower(),
                 fonts.get("small"),
             )
             self._draw_backed_text(
                 surface,
-                (x, temp_y),
+                temp_xy,
                 self._temperature_text(station.temperature),
                 fonts.get("medium"),
             )
             if station.precipitation > 0:
                 self._draw_backed_text(
                     surface,
-                    (x, precip_y),
+                    precip_xy,
                     f"{station.precipitation}%",
                     fonts.get("small"),
                 )
 
     @staticmethod
-    def _station_text_y(index: int, station_count: int, y: float) -> tuple[float, float, float]:
+    def _station_label_positions(
+        index: int,
+        station_count: int,
+        x: float,
+        y: float,
+    ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
         if index == station_count - 1:
-            return (y - 52, y + 43, y + 65)
-        return (y - 39, y + 48, y + 70)
+            return ((x, y - 52), (x, y + 43), (x, y + 65))
+
+        time_x = x - 14 if index == 0 else x
+        detail_x = x + 16 if index == 1 else x
+        return ((time_x, y - 39), (detail_x, y + 48), (detail_x, y + 70))
 
     def _draw_solar_event_times(
         self,
         surface: PaneSurface,
-        events: list[datetime],
+        events: list[SolarEvent],
         now: datetime,
     ) -> None:
         total_seconds = self.FORECAST_HOURS * 3600
         for event in events:
-            t = (event - self._local_naive(now)).total_seconds() / total_seconds
+            t = (event.when - self._local_naive(now)).total_seconds() / total_seconds
             if not 0 < t < 1:
                 continue
             x, y = self._arc_point(t)
-            surface.line((x, y - 13, x, y + 13), fill=0, width=2)
-            surface.text(
-                (x, y - 23),
-                event.strftime("%-I:%M"),
+            label_xy = self._solar_event_label_position(t, x, y)
+
+            surface.ellipse((x - 7, y - 7, x + 7, y + 7), fill=255)
+            surface.ellipse((x - 4, y - 4, x + 4, y + 4), outline=0, width=2)
+            self._draw_backed_text(
+                surface,
+                label_xy,
+                f"{event.kind.upper()} {event.when.strftime('%-I:%M')}",
                 font=fonts.get("small"),
-                fill=0,
-                anchor="ms",
             )
 
     def _draw_bottom_rail(self, surface: PaneSurface, ctx: RenderContext) -> None:
@@ -356,7 +384,7 @@ class AllInOnePane(Pane):
             stations.append(ForecastStation(when=now + timedelta(hours=offset), report=fallback))
         return stations[:len(self.ARC_STATION_T)]
 
-    def _solar_events(self, weather: dict, now: datetime) -> list[datetime]:
+    def _solar_events(self, weather: dict, now: datetime) -> list[SolarEvent]:
         start = self._local_naive(now)
         end = start + timedelta(hours=self.FORECAST_HOURS)
         events = []
@@ -365,20 +393,25 @@ class AllInOnePane(Pane):
             for key in ("sunrise", "sunset"):
                 event = self._parse_datetime(astro.get(key))
                 if event is not None and start < event < end:
-                    events.append(event)
-        return sorted(set(events))
+                    events.append(SolarEvent(when=event, kind=key))
+        return sorted(set(events), key=lambda event: event.when)
 
     def _ribbon_width(
         self,
         moment: datetime,
         stations: list[ForecastStation],
-        events: list[datetime],
+        events: list[SolarEvent],
         weather: dict,
     ) -> int:
         local_moment = self._local_naive(moment)
-        if any(abs((event - local_moment).total_seconds()) <= self.TWILIGHT_MINUTES * 60 for event in events):
+        if self._is_day(local_moment, stations, weather):
+            return 24
+        if any(
+            abs((event.when - local_moment).total_seconds()) <= self.TWILIGHT_MINUTES * 60
+            for event in events
+        ):
             return 12
-        return 24 if self._is_day(local_moment, stations, weather) else 4
+        return 4
 
     def _is_day(self, moment: datetime, stations: list[ForecastStation], weather: dict) -> bool:
         for forecast_day in weather.get("forecast", {}).get("forecastday", []):
@@ -418,6 +451,28 @@ class AllInOnePane(Pane):
             + 2 * inverse * t * cls.ARC_CONTROL[1]
             + t * t * cls.ARC_END[1],
         )
+
+    @classmethod
+    def _solar_event_label_position(
+        cls,
+        t: float,
+        x: float,
+        y: float,
+    ) -> tuple[float, float]:
+        inverse = 1 - t
+        tangent_x = 2 * (
+            inverse * (cls.ARC_CONTROL[0] - cls.ARC_START[0])
+            + t * (cls.ARC_END[0] - cls.ARC_CONTROL[0])
+        )
+        tangent_y = 2 * (
+            inverse * (cls.ARC_CONTROL[1] - cls.ARC_START[1])
+            + t * (cls.ARC_END[1] - cls.ARC_CONTROL[1])
+        )
+        length = max(1.0, math.hypot(tangent_x, tangent_y))
+        normal_x = -tangent_y / length
+        normal_y = tangent_x / length
+        distance = 31
+        return (x - normal_x * distance, y - normal_y * distance)
 
     @staticmethod
     def _temperature_text(value) -> str:

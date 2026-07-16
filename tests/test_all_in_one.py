@@ -56,10 +56,27 @@ def test_solar_events_drive_day_twilight_and_night_weights():
     stations = pane._forecast_stations(weather, fx.FIXED_NOW)
     events = pane._solar_events(weather, fx.FIXED_NOW)
 
-    assert [event.strftime("%H:%M") for event in events] == ["16:52"]
+    assert [(event.kind, event.when.strftime("%H:%M")) for event in events] == [
+        ("sunset", "16:52")
+    ]
     assert pane._ribbon_width(datetime(2026, 1, 15, 15, 0), stations, events, weather) == 24
-    assert pane._ribbon_width(datetime(2026, 1, 15, 16, 40), stations, events, weather) == 12
+    assert pane._ribbon_width(datetime(2026, 1, 15, 16, 40), stations, events, weather) == 24
+    assert pane._ribbon_width(datetime(2026, 1, 15, 17, 0), stations, events, weather) == 12
     assert pane._ribbon_width(datetime(2026, 1, 15, 18, 0), stations, events, weather) == 4
+
+    morning = datetime(2026, 1, 15, 6, 0)
+    morning_weather = fx.make_weather(now=morning)
+    morning_stations = pane._forecast_stations(morning_weather, morning)
+    morning_events = pane._solar_events(morning_weather, morning)
+    assert [(event.kind, event.when.strftime("%H:%M")) for event in morning_events] == [
+        ("sunrise", "07:16")
+    ]
+    assert pane._ribbon_width(
+        datetime(2026, 1, 15, 7, 0), morning_stations, morning_events, morning_weather
+    ) == 12
+    assert pane._ribbon_width(
+        datetime(2026, 1, 15, 7, 20), morning_stations, morning_events, morning_weather
+    ) == 24
 
 
 def test_bird_layer_preserves_complete_collage_and_rises_into_arch():
@@ -104,8 +121,15 @@ def test_bird_layer_preserves_complete_collage_and_rises_into_arch():
 
     for index in (1, len(stations) - 1):
         x, y = pane._arc_point(pane.ARC_STATION_T[index])
-        _time_y, _temp_y, precip_y = pane._station_text_y(index, len(stations), y)
-        assert exclusions.getpixel((round(x), round(precip_y - pane.BIRD_Y))) == 255
+        _time_xy, _temp_xy, precip_xy = pane._station_label_positions(
+            index,
+            len(stations),
+            x,
+            y,
+        )
+        assert exclusions.getpixel(
+            (round(precip_xy[0]), round(precip_xy[1] - pane.BIRD_Y))
+        ) == 255
 
 
 def test_weather_service_keeps_solar_times_in_forecast_days():
