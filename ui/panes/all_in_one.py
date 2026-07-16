@@ -65,8 +65,8 @@ class AllInOnePane(Pane):
     ARC_STATION_T = (0.0, 0.16, 0.36, 0.56, 0.76, 0.96)
     FORECAST_HOURS = 10
     TWILIGHT_MINUTES = 30
-    BIRD_Y = 204
-    BIRD_HEIGHT = 832
+    BIRD_Y = 160
+    BIRD_HEIGHT = 925
     BOTTOM_Y = 1158
 
     def __init__(self, rect: tuple[int, int, int, int]):
@@ -117,22 +117,8 @@ class AllInOnePane(Pane):
     def _draw_birds(self, surface: PaneSurface, ctx: RenderContext) -> None:
         collage = self._bird_pane.collage_image(ctx.data.birds)
         bird_ink = ImageChops.invert(collage)
-        clip = Image.new("L", collage.size, 0)
-        clip_draw = ImageDraw.Draw(clip)
-        boundary = []
-        for x in range(self.w + 1):
-            t = x / self.w
-            inverse = 1 - t
-            y = (
-                inverse * inverse * 390
-                + 2 * inverse * t * 128
-                + t * t * 390
-            )
-            boundary.append((x, max(0, int(y - self.BIRD_Y))))
-        clip_draw.polygon([*boundary, (self.w, self.BIRD_HEIGHT), (0, self.BIRD_HEIGHT)], fill=255)
-        mask = ImageChops.multiply(bird_ink, clip)
         black = Image.new("L", collage.size, 0)
-        surface.paste(black, (0, self.BIRD_Y), mask)
+        surface.paste(black, (0, self.BIRD_Y), bird_ink)
 
     def _draw_ribbon(
         self,

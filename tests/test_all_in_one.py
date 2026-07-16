@@ -1,9 +1,13 @@
 from datetime import datetime
 
+from PIL import Image, ImageChops
+
 from config.config import config
+from data.models import AppData
 from services.weather_service import WeatherService
 from tests.golden import fixtures as fx
 from ui.panes.all_in_one import AllInOnePane
+from ui.panes.base import PaneSurface, RenderContext
 
 
 def _pane() -> AllInOnePane:
@@ -56,6 +60,23 @@ def test_solar_events_drive_day_twilight_and_night_weights():
     assert pane._ribbon_width(datetime(2026, 1, 15, 15, 0), stations, events, weather) == 24
     assert pane._ribbon_width(datetime(2026, 1, 15, 16, 40), stations, events, weather) == 12
     assert pane._ribbon_width(datetime(2026, 1, 15, 18, 0), stations, events, weather) == 4
+
+
+def test_bird_layer_preserves_complete_collage_and_rises_into_arch():
+    pane = _pane()
+    birds = fx.make_birds()
+    frame = Image.new("L", (pane.w, pane.h), 255)
+    surface = PaneSurface(frame, (0, 0))
+    context = RenderContext(data=AppData(birds=birds), now=fx.FIXED_NOW)
+
+    pane._draw_birds(surface, context)
+
+    source = pane._bird_pane.collage_image(birds)
+    rendered = frame.crop((0, pane.BIRD_Y, pane.w, pane.BIRD_Y + pane.BIRD_HEIGHT))
+    assert ImageChops.difference(rendered, source).getbbox() is None
+
+    top_ink = ImageChops.invert(rendered.crop((0, 0, pane.w, 50)))
+    assert top_ink.getbbox() is not None
 
 
 def test_weather_service_keeps_solar_times_in_forecast_days():
