@@ -22,6 +22,7 @@ from ui.panes import (
     BirdPane,
     BirdCollagePane,
     BirdProfilePane,
+    AllInOnePane,
 )
 
 
@@ -101,6 +102,31 @@ def _birds_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]) 
     return _bird_redraw_key(ctx) != _bird_redraw_key(prev_ctx)
 
 
+def _all_in_one_redraw_key(ctx: RenderContext) -> tuple:
+    subway = ctx.data.subway
+    bikes = ctx.data.bikes
+    return (
+        _displayed_time(ctx),
+        ctx.data.weather,
+        tuple(
+            (train.train_id, train.arrival_timestamp, train.minutes_until_arrival)
+            for train in (subway.trains if subway else [])
+        ),
+        subway.unavailable_lines if subway else frozenset(),
+        (
+            getattr(bikes, "classic_bikes", None),
+            getattr(bikes, "ebikes", None),
+        ),
+        _bird_redraw_key(ctx),
+    )
+
+
+def _all_in_one_should_redraw(ctx: RenderContext, prev_ctx: Optional[RenderContext]) -> bool:
+    if prev_ctx is None:
+        return True
+    return _all_in_one_redraw_key(ctx) != _all_in_one_redraw_key(prev_ctx)
+
+
 def build_transit_screen() -> Screen:
     """The default screen: date, F/G arrivals, hourly weather, bikes, current weather."""
     d = config.display
@@ -159,6 +185,16 @@ def build_bird_profile_screen() -> Screen:
     )
 
 
+def build_all_in_one_screen() -> Screen:
+    """Weather ribbon, spiral birds, trains, and bikes on one screen."""
+    d = config.display
+    return Screen(
+        [AllInOnePane((0, 0, d.WIDTH, d.HEIGHT))],
+        required_data={"weather", "subway", "birds"},
+        redraw_policy=_all_in_one_should_redraw,
+    )
+
+
 class ScreenManager:
     """Holds the registered screens and the active selection."""
 
@@ -207,4 +243,5 @@ screen_manager = ScreenManager([
     ("bird-collage-named", build_named_bird_collage_screen()),
     ("birds", build_birds_screen()),
     ("bird-profile", build_bird_profile_screen()),
+    ("all-in-one", build_all_in_one_screen()),
 ])

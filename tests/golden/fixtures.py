@@ -11,10 +11,13 @@ that are hour-aligned from midnight (index i == hour-of-day for day 0).
 """
 
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
 from typing import List, Optional
 
 import clock
 from config.config import config
+from data.models import BirdObservation, BirdResult
 from services.subway_service import TrainArrival
 from services.citibike_service import BikeAvailability
 from services.weather_service import (
@@ -63,6 +66,8 @@ def make_weather(
     daily_high: float = 42,
     daily_low: float = 30,
     daily_precip: int = 10,
+    sunrise: str = "2026-01-15T07:16",
+    sunset: str = "2026-01-15T16:52",
     empty_hourly: bool = False,
 ) -> dict:
     """Build a weather payload in the shape `ui.layout` consumes.
@@ -91,6 +96,10 @@ def make_weather(
         "forecastday": [
             {
                 "date": now.strftime("%Y-%m-%d"),
+                "astro": {
+                    "sunrise": sunrise,
+                    "sunset": sunset,
+                },
                 "day": {
                     "maxtemp_f": daily_high,
                     "mintemp_f": daily_low,
@@ -123,6 +132,17 @@ def make_weather(
         }
 
     return {"current": current, "forecast": forecast, "hourly": hourly}
+
+
+def make_birds() -> BirdResult:
+    """Load the committed deterministic BirdNET fixture."""
+    payload = json.loads(
+        (Path(__file__).parents[2] / "assets" / "birds" / "mock_detections.json").read_text()
+    )
+    return BirdResult(
+        observations=[BirdObservation(**row) for row in payload["observations"]],
+        window_hours=payload["window_hours"],
+    )
 
 
 def make_train(minutes_from_now: int, route_id: str, now: datetime = FIXED_NOW, *, seq: int = 0) -> TrainArrival:

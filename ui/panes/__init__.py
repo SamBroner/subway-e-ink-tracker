@@ -17,6 +17,7 @@ from ui.panes.bird_collage import BirdCollagePane
 from ui.panes.bird_profile import BirdProfilePane
 from ui.panes.hello import HelloPane
 from ui.panes.static_image import StaticImagePane
+from ui.panes.all_in_one import AllInOnePane
 
 __all__ = [
     "Pane",
@@ -31,4 +32,5 @@ __all__ = [
     "BirdProfilePane",
     "HelloPane",
     "StaticImagePane",
+    "AllInOnePane",
 ]

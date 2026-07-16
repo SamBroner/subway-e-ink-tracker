@@ -162,6 +162,7 @@ def test_runner_prewarms_remaining_screens_after_current_render():
         "bird-collage-named",
         "birds",
         "bird-profile",
+        "all-in-one",
     ]
 
 
@@ -269,6 +270,7 @@ def test_spacebar_advance_cycles_through_all_screens():
         "bird-collage-named",
         "birds",
         "bird-profile",
+        "all-in-one",
         "transit",
     ]
     assert all(call["intent"] == DisplayIntent.SCREEN_TRANSITION for call in disp.calls)
