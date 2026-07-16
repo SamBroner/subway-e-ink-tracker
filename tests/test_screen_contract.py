@@ -8,7 +8,7 @@ from config.config import config
 from data import AppData, BirdObservation, BirdResult
 from services.subway_service import TrainArrival
 from services.subway_service import SubwayResult
-from ui.panes import BirdCollagePane, BirdPane, BirdProfilePane, RenderContext
+from ui.panes import AllInOnePane, BirdCollagePane, BirdPane, BirdProfilePane, RenderContext
 from ui.panes.bird_art import BirdArtLoader
 from ui.screens import screen_manager
 
@@ -143,9 +143,11 @@ def test_screen_requirements_and_exact_order():
         "bird-collage-named",
         "birds",
         "bird-profile",
+        "all-in-one",
     ]
     assert "hello" not in screen_manager.names()
     assert screen_manager.get("transit").requires() == {"weather", "subway"}
+    assert screen_manager.get("all-in-one").requires() == {"weather", "subway", "birds"}
     for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
         assert screen_manager.get(name).requires() == {"birds"}
 
@@ -196,6 +198,11 @@ def test_bird_screens_redraw_when_observations_change():
 
     for name in ("bird-collage", "bird-collage-named", "birds", "bird-profile"):
         assert screen_manager.get(name).should_redraw(current, prev)
+
+
+def test_all_in_one_uses_the_unlabeled_spiral_collage():
+    pane = AllInOnePane((0, 0, config.display.WIDTH, config.display.HEIGHT))
+    assert pane._bird_pane.named is False
 
 
 def test_unlabeled_collage_renders_without_labels():

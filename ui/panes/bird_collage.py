@@ -89,12 +89,15 @@ class BirdCollagePane(Pane):
         self._occupied_boxes: list[Rect] = []
 
     def paint(self, surface: PaneSurface, ctx: RenderContext):
-        key = self._cache_key(ctx.data.birds)
-        if self._cached_image is None or key != self._cached_key:
-            self._cached_image = self._build_collage(ctx.data.birds)
-            self._cached_key = key
+        surface.paste(self.collage_image(ctx.data.birds), (self.x, self.y))
 
-        surface.paste(self._cached_image, (self.x, self.y))
+    def collage_image(self, birds: BirdResult | None) -> Image.Image:
+        """Return the cached collage so composite panes can reuse this layout."""
+        key = self._cache_key(birds)
+        if self._cached_image is None or key != self._cached_key:
+            self._cached_image = self._build_collage(birds)
+            self._cached_key = key
+        return self._cached_image
 
     def _cache_key(self, birds: BirdResult | None) -> tuple:
         if birds is None:

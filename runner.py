@@ -131,7 +131,7 @@ class Runner:
             return
 
         # Warn if bike data hasn't arrived yet (but don't block display)
-        if screen_name == "transit" and not ctx.data.has("bikes"):
+        if screen_name in {"transit", "all-in-one"} and not ctx.data.has("bikes"):
             logger.warning("[DISPLAY] Bike data not available, displaying without it")
 
         # Always update if this is our first update

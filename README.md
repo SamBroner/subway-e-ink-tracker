@@ -134,6 +134,7 @@ bird-collage
 bird-collage-named
 birds
 bird-profile
+all-in-one
 ```
 
 ## Physical Build

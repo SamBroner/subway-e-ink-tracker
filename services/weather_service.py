@@ -348,7 +348,9 @@ class WeatherService:
                     "weathercode",
                     "temperature_2m_max",
                     "temperature_2m_min",
-                    "precipitation_probability_max"
+                    "precipitation_probability_max",
+                    "sunrise",
+                    "sunset"
                 ],
                 "timezone": clock.TZ_NAME,
                 "temperature_unit": "fahrenheit",
@@ -441,16 +443,23 @@ class WeatherService:
     def _get_forecast_days(self, data: Dict) -> List[Dict]:
         """Transform daily forecast data to match expected format"""
         forecasts = []
-        for i in range(len(data['daily']['time'])):
+        daily = data['daily']
+        sunrise = daily.get('sunrise', [])
+        sunset = daily.get('sunset', [])
+        for i in range(len(daily['time'])):
             forecasts.append({
-                'date': data['daily']['time'][i],
+                'date': daily['time'][i],
+                'astro': {
+                    'sunrise': sunrise[i] if i < len(sunrise) else None,
+                    'sunset': sunset[i] if i < len(sunset) else None,
+                },
                 'day': {
-                    'maxtemp_f': data['daily']['temperature_2m_max'][i],
-                    'mintemp_f': data['daily']['temperature_2m_min'][i],
-                    'daily_chance_of_rain': data['daily']['precipitation_probability_max'][i],
+                    'maxtemp_f': daily['temperature_2m_max'][i],
+                    'mintemp_f': daily['temperature_2m_min'][i],
+                    'daily_chance_of_rain': daily['precipitation_probability_max'][i],
                     'condition': {
-                        'text': self._get_condition_text(data['daily']['weathercode'][i]),
-                        'code': self._map_condition_code(data['daily']['weathercode'][i])
+                        'text': self._get_condition_text(daily['weathercode'][i]),
+                        'code': self._map_condition_code(daily['weathercode'][i])
                     }
                 },
                 'hour': self._get_hourly_data_for_day(data, i)
