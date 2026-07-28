@@ -7,12 +7,60 @@ from PIL import Image
 
 from data import AppData
 from ui import display as display_module
-from ui.display import DebugDisplay, Display, DisplayFrame, DisplayIntent
+from ui.display import DebugDisplay, Display, DisplayFrame, DisplayIntent, EInkDisplay
 from ui.render_cache import RenderCache
 
 
 def _image():
     return Image.new("L", (8, 8), 255)
+
+
+def test_eink_maintenance_clear_blanks_panel_before_grayscale_redraw():
+    eink = EInkDisplay.__new__(EInkDisplay)
+    eink.previous_image = None
+    calls = []
+    eink._clear_display = lambda: calls.append(("clear",))
+    eink._update_display = lambda image, clear, intent: calls.append(
+        ("draw", image, clear, intent)
+    )
+    image = _image()
+
+    eink.update(image, clear=True)
+
+    assert calls == [
+        ("clear",),
+        ("draw", image, False, DisplayIntent.MAINTENANCE_CLEAR),
+    ]
+    assert eink.previous_image is image
+
+
+def test_eink_screen_transition_redraws_without_hard_clear():
+    eink = EInkDisplay.__new__(EInkDisplay)
+    eink.previous_image = None
+    calls = []
+    eink._clear_display = lambda: calls.append(("clear",))
+    eink._update_display = lambda image, clear, intent: calls.append(
+        ("draw", image, clear, intent)
+    )
+    image = _image()
+    metadata = DisplayFrame(
+        image=image,
+        partial=False,
+        clear=False,
+        screen_name="all-in-one",
+        render_requested_at=datetime(2026, 1, 15, 14, 23, 5),
+        queued_at=time.time(),
+        sequence=1,
+        displayed_clock="2:23:05pm",
+        intent=DisplayIntent.SCREEN_TRANSITION,
+    )
+
+    eink.update(image, metadata=metadata)
+
+    assert calls == [
+        ("draw", image, False, DisplayIntent.SCREEN_TRANSITION),
+    ]
+    assert eink.previous_image is image
 
 
 def test_debug_display_history_writes_timestamped_frame_and_manifest(tmp_path):

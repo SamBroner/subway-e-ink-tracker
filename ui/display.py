@@ -340,8 +340,15 @@ class EInkDisplay:
                     clear,
                 )
             intent = metadata.intent if metadata else DisplayIntent.MAINTENANCE_CLEAR if clear else DisplayIntent.NORMAL
-            if intent in {DisplayIntent.SCREEN_TRANSITION, DisplayIntent.MAINTENANCE_CLEAR}:
-                self._update_display(img, clear, intent)
+            if intent == DisplayIntent.MAINTENANCE_CLEAR or clear:
+                logger.info("Performing hard maintenance clear before grayscale redraw")
+                self._clear_display()
+                self._update_display(img, False, DisplayIntent.MAINTENANCE_CLEAR)
+                self.previous_image = img
+                return
+
+            if intent == DisplayIntent.SCREEN_TRANSITION:
+                self._update_display(img, False, intent)
                 self.previous_image = img
                 return
 
