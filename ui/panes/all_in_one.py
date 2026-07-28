@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import math
-from typing import Iterable
 
 from PIL import Image, ImageChops, ImageDraw
 
@@ -65,9 +64,9 @@ class SolarEvent:
 class AllInOnePane(Pane):
     """Render the forecast-origin punched ribbon around the bird collage."""
 
-    ARC_START = (48.0, 334.0)
-    ARC_CONTROL = (412.0, -168.0)
-    ARC_END = (777.0, 334.0)
+    ARC_START = (48.0, 364.0)
+    ARC_CONTROL = (412.0, -138.0)
+    ARC_END = (777.0, 364.0)
     ARC_STATION_T = (0.0, 0.16, 0.36, 0.56, 0.76, 0.96)
     FORECAST_HOURS = 10
     TWILIGHT_MINUTES = 30
@@ -75,12 +74,15 @@ class AllInOnePane(Pane):
     BIRD_HEIGHT = 925
     FORECAST_CLEARANCE = 5
     FORECAST_ICON_RADIUS = 34
+    FORECAST_ICON_SIZE = 52
     TEXT_BACKING_PADDING = 2
-    BOTTOM_Y = 1158
+    BOTTOM_Y = 1137
+    BOTTOM_RAIL_TOP = 1070
 
     def __init__(self, rect: tuple[int, int, int, int]):
         super().__init__(rect)
         self._bird_pane = BirdCollagePane((0, 0, self.w, self.BIRD_HEIGHT), named=False)
+        self._bottom_pair_font = fonts.get("xxlarge").font_variant(size=48)
         self._ribbon_cache_key: tuple[int, ...] | None = None
         self._ribbon_cache_mask: Image.Image | None = None
 
@@ -100,29 +102,45 @@ class AllInOnePane(Pane):
     def _draw_header(self, surface: PaneSurface, weather: dict, now: datetime) -> None:
         current = weather.get("current", {})
         condition = str(current.get("condition", {}).get("text", "Weather unavailable")).upper()
-        condition_lines = self._wrap_text(condition, fonts.get("small"), 270, surface)
+        condition_font = fonts.get("large")
+        condition_lines = self._wrap_text(condition, condition_font, 320, surface)
         for index, line in enumerate(condition_lines[:2]):
-            surface.text((24, 20 + index * 23), line, font=fonts.get("small"), fill=0)
+            surface.text((24, 14 + index * 35), line, font=condition_font, fill=0)
 
         forecast_days = weather.get("forecast", {}).get("forecastday", [])
         today = forecast_days[0].get("day", {}) if forecast_days else {}
         high = self._temperature_text(today.get("maxtemp_f"))
         low = self._temperature_text(today.get("mintemp_f"))
-        detail_y = 65 if len(condition_lines) == 1 else 82
+        detail_y = 58 if len(condition_lines) == 1 else 94
         surface.text((24, detail_y), "TODAY", font=fonts.get("small"), fill=0)
-        surface.text((24, detail_y + 30), f"H{high} · L{low}", font=fonts.get("medium"), fill=0)
+        surface.text(
+            (24, detail_y + 27),
+            f"H{high} · L{low}",
+            font=fonts.get("large"),
+            fill=0,
+        )
 
         surface.text(
-            (801, 20),
+            (801, 10),
             now.strftime("%a, %b %-d").upper(),
+            font=fonts.get("medium"),
+            fill=0,
+            anchor="rt",
+        )
+        surface.text(
+            (738, 42),
+            now.strftime("%-I:%M"),
+            font=fonts.get("xheader"),
+            fill=0,
+            anchor="rt",
+        )
+        surface.text(
+            (748, 81),
+            now.strftime(":%S %p").lower(),
             font=fonts.get("small"),
             fill=0,
-            anchor="ra",
+            anchor="lm",
         )
-        time_text = now.strftime("%-I:%M")
-        seconds_text = now.strftime(":%S %p").lower()
-        surface.text((750, 36), time_text, font=fonts.get("header"), fill=0, anchor="ra")
-        surface.text((754, 80), seconds_text, font=fonts.get("small"), fill=0, anchor="ls")
 
     def _draw_birds(
         self,
@@ -157,6 +175,21 @@ class AllInOnePane(Pane):
                 fill=255,
             )
 
+        arc_points = [
+            (x, y - self.BIRD_Y)
+            for x, y in (self._arc_point(step / 96) for step in range(97))
+        ]
+        draw.line(
+            arc_points,
+            fill=255,
+            width=24 + self.FORECAST_CLEARANCE * 2,
+            joint="curve",
+        )
+        draw.rectangle(
+            (0, self.BOTTOM_RAIL_TOP - self.BIRD_Y, self.w, self.BIRD_HEIGHT),
+            fill=255,
+        )
+
         for index, (station, t) in enumerate(zip(stations, self.ARC_STATION_T)):
             x, y = self._arc_point(t)
             radius = self.FORECAST_ICON_RADIUS
@@ -173,7 +206,7 @@ class AllInOnePane(Pane):
             )
             labels = [
                 (time_xy, station.when.strftime("%-I%p").lower(), fonts.get("small")),
-                (temp_xy, self._temperature_text(station.temperature), fonts.get("medium")),
+                (temp_xy, self._temperature_text(station.temperature), fonts.get("large")),
             ]
             if station.precipitation > 0:
                 labels.append((precip_xy, f"{station.precipitation}%", fonts.get("small")))
@@ -233,10 +266,15 @@ class AllInOnePane(Pane):
     def _draw_stations(self, surface: PaneSurface, stations: list[ForecastStation]) -> None:
         for index, (station, t) in enumerate(zip(stations, self.ARC_STATION_T)):
             x, y = self._arc_point(t)
-            surface.ellipse((x - 29, y - 29, x + 29, y + 29), fill=255)
+            aperture = self.FORECAST_ICON_SIZE // 2 + 7
+            surface.ellipse((x - aperture, y - aperture, x + aperture, y + aperture), fill=255)
             try:
-                icon = utils.getWeatherIcon(station.report, 44)
-                surface.paste(icon, (int(x - 22), int(y - 22)), icon)
+                icon = utils.getWeatherIcon(station.report, self.FORECAST_ICON_SIZE)
+                surface.paste(
+                    icon,
+                    (int(x - self.FORECAST_ICON_SIZE / 2), int(y - self.FORECAST_ICON_SIZE / 2)),
+                    icon,
+                )
             except (FileNotFoundError, KeyError, OSError):
                 surface.ellipse((x - 8, y - 8, x + 8, y + 8), outline=0, width=2)
 
@@ -257,7 +295,7 @@ class AllInOnePane(Pane):
                 surface,
                 temp_xy,
                 self._temperature_text(station.temperature),
-                fonts.get("medium"),
+                fonts.get("large"),
             )
             if station.precipitation > 0:
                 self._draw_backed_text(
@@ -275,11 +313,11 @@ class AllInOnePane(Pane):
         y: float,
     ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
         if index == station_count - 1:
-            return ((x, y - 52), (x, y + 43), (x, y + 65))
+            return ((x, y - 48), (x, y + 50), (x, y + 67))
 
-        time_x = x - 14 if index == 0 else x
-        detail_x = x + 16 if index == 1 else x
-        return ((time_x, y - 39), (detail_x, y + 48), (detail_x, y + 70))
+        time_x = x - 17 if index == 0 else x
+        detail_x = x + 20 if index == 1 else x
+        return ((time_x, y - 39), (detail_x, y + 55), (detail_x, y + 72))
 
     def _draw_solar_event_times(
         self,
@@ -309,37 +347,41 @@ class AllInOnePane(Pane):
         unavailable = ctx.data.subway.unavailable_lines if ctx.data.subway else frozenset()
         self._draw_route(
             surface,
-            34,
+            48,
+            128,
+            202,
             config.TRAIN_LINE_1,
             self._route_minutes(trains, config.TRAIN_LINE_1, ctx.now),
             config.TRAIN_LINE_1 in unavailable,
         )
         self._draw_route(
             surface,
-            244,
+            280,
+            360,
+            446,
             config.TRAIN_LINE_2,
             self._route_minutes(trains, config.TRAIN_LINE_2, ctx.now),
             config.TRAIN_LINE_2 in unavailable,
         )
 
-        bike_icon = utils.get_ui_icon("bike", 54)
-        surface.paste(bike_icon, (466, self.BOTTOM_Y - 27), bike_icon)
+        bike_icon = utils.get_ui_icon("bike", 100)
+        surface.paste(bike_icon, (500, self.BOTTOM_Y - 50), bike_icon)
         classic = getattr(ctx.data.bikes, "classic_bikes", None)
         surface.text(
-            (556, self.BOTTOM_Y),
+            (635, self.BOTTOM_Y),
             "--" if classic is None else str(classic),
-            font=fonts.get("xlarge"),
+            font=fonts.get("header"),
             fill=0,
             anchor="mm",
         )
 
-        ebike_icon = utils.get_ui_icon("lightningbolt", 46)
-        surface.paste(ebike_icon, (637, self.BOTTOM_Y - 23), ebike_icon)
+        ebike_icon = utils.get_ui_icon("lightningbolt", 80)
+        surface.paste(ebike_icon, (672, self.BOTTOM_Y - 40), ebike_icon)
         electric = getattr(ctx.data.bikes, "ebikes", None)
         surface.text(
-            (738, self.BOTTOM_Y),
+            (787, self.BOTTOM_Y),
             "--" if electric is None else str(electric),
-            font=fonts.get("xlarge"),
+            font=fonts.get("header"),
             fill=0,
             anchor="mm",
         )
@@ -348,19 +390,46 @@ class AllInOnePane(Pane):
         self,
         surface: PaneSurface,
         circle_x: int,
+        lead_x: int,
+        pair_x: int,
         route: str,
         minutes: list[int],
         unavailable: bool,
     ) -> None:
-        radius = 27
-        surface.ellipse((circle_x - radius, self.BOTTOM_Y - radius, circle_x + radius, self.BOTTOM_Y + radius), fill=0)
-        surface.text((circle_x, self.BOTTOM_Y), route, font=fonts.get("xxlarge"), fill=255, anchor="mm")
-        values: Iterable[str | int] = ("—",) if unavailable or not minutes else minutes[:3]
-        for index, value in enumerate(values):
+        radius = 48
+        surface.ellipse(
+            (
+                circle_x - radius,
+                self.BOTTOM_Y - radius,
+                circle_x + radius,
+                self.BOTTOM_Y + radius,
+            ),
+            fill=0,
+        )
+        surface.text(
+            (circle_x, self.BOTTOM_Y),
+            route,
+            font=fonts.get("header"),
+            fill=255,
+            anchor="mm",
+        )
+        values = (
+            ["—"]
+            if unavailable or not minutes
+            else [str(value) for value in minutes[:3]]
+        )
+        surface.text(
+            (lead_x, self.BOTTOM_Y),
+            values[0],
+            font=fonts.get("xheader"),
+            fill=0,
+            anchor="mm",
+        )
+        for value, y in zip(values[1:], (1107, 1171)):
             surface.text(
-                (80 + (circle_x - 34) + index * 48, self.BOTTOM_Y),
-                str(value),
-                font=fonts.get("large"),
+                (pair_x, y),
+                value,
+                font=self._bottom_pair_font,
                 fill=0,
                 anchor="mm",
             )
@@ -471,8 +540,8 @@ class AllInOnePane(Pane):
         length = max(1.0, math.hypot(tangent_x, tangent_y))
         normal_x = -tangent_y / length
         normal_y = tangent_x / length
-        distance = 31
-        return (x - normal_x * distance, y - normal_y * distance)
+        distance = 52
+        return (x + normal_x * distance, y + normal_y * distance)
 
     @staticmethod
     def _temperature_text(value) -> str:

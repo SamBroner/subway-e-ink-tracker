@@ -1,11 +1,12 @@
 from datetime import datetime
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 
 from config.config import config
 from data.models import AppData
 from services.weather_service import WeatherService
 from tests.golden import fixtures as fx
+from ui.fonts import fonts
 from ui.panes.all_in_one import AllInOnePane
 from ui.panes.base import PaneSurface, RenderContext
 
@@ -130,6 +131,60 @@ def test_bird_layer_preserves_complete_collage_and_rises_into_arch():
         assert exclusions.getpixel(
             (round(precip_xy[0]), round(precip_xy[1] - pane.BIRD_Y))
         ) == 255
+
+    ribbon_x, ribbon_y = pane._arc_point(0.1)
+    assert exclusions.getpixel(
+        (round(ribbon_x), round(ribbon_y - pane.BIRD_Y))
+    ) == 255
+    assert exclusions.getpixel(
+        (pane.w // 2, pane.BOTTOM_RAIL_TOP - pane.BIRD_Y)
+    ) == 255
+
+
+def test_monumental_bottom_rail_keeps_double_digit_counts_in_their_lanes():
+    pane = _pane()
+    draw = ImageDraw.Draw(Image.new("L", (pane.w, pane.h), 255))
+
+    f_pair = draw.textbbox(
+        (202, 1171),
+        "16",
+        font=pane._bottom_pair_font,
+        anchor="mm",
+    )
+    g_pair = draw.textbbox(
+        (446, 1171),
+        "24",
+        font=pane._bottom_pair_font,
+        anchor="mm",
+    )
+    classic = draw.textbbox(
+        (635, pane.BOTTOM_Y),
+        "12",
+        font=fonts.get("header"),
+        anchor="mm",
+    )
+    electric = draw.textbbox(
+        (787, pane.BOTTOM_Y),
+        "17",
+        font=fonts.get("header"),
+        anchor="mm",
+    )
+
+    assert f_pair[2] < 280 - 48
+    assert g_pair[2] < 500
+    assert classic[0] >= 600
+    assert classic[2] < 672
+    assert electric[0] >= 752
+    assert electric[2] <= pane.w
+
+
+def test_solar_time_is_positioned_inside_the_arch():
+    pane = _pane()
+    x, y = pane._arc_point(0.25)
+    label_x, label_y = pane._solar_event_label_position(0.25, x, y)
+
+    assert label_x > x
+    assert label_y > y
 
 
 def test_weather_service_keeps_solar_times_in_forecast_days():
