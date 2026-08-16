@@ -61,6 +61,35 @@ class Clock:
         return datetime.now()
 
 
+def _bird_observation_render_key(observation) -> tuple:
+    return (
+        observation.sci_name,
+        observation.common_name,
+        observation.count,
+        observation.last_seen,
+        observation.max_confidence,
+    )
+
+
+def _bird_change_requires_clear(
+    ctx: RenderContext,
+    previous_ctx: Optional[RenderContext],
+) -> bool:
+    """Return true when a bird redraw is not an append-only frame change."""
+    if previous_ctx is None or previous_ctx.data.birds is None or ctx.data.birds is None:
+        return False
+
+    previous = [
+        _bird_observation_render_key(observation)
+        for observation in previous_ctx.data.birds.observations
+    ]
+    current = [
+        _bird_observation_render_key(observation)
+        for observation in ctx.data.birds.observations
+    ]
+    return current[:len(previous)] != previous
+
+
 class Runner:
     def __init__(self, display=None, clock: "Clock" = None, data_hub: DataHub = None):
         logger.info("Initializing Runner")
@@ -91,9 +120,9 @@ class Runner:
             logger.info(f"Bike update: {data.bikes.classic_bikes} classic, {data.bikes.ebikes} ebikes")
         elif key == "birds" and data.birds is not None:
             logger.info(
-                "Bird update: %s observations over %sh (source_unavailable=%s)",
+                "Bird update: %s observations in hourly accumulating window "
+                "(source_unavailable=%s)",
                 len(data.birds.observations),
-                data.birds.window_hours,
                 data.birds.source_unavailable,
             )
 
@@ -157,6 +186,15 @@ class Runner:
         prev_ctx = self._previous_render_ctx if self._previous_screen_name == screen_name else None
         if not screen.should_redraw(ctx, prev_ctx):
             logger.debug("[DISPLAY SKIP] %s screen does not need redraw", screen_name)
+            return
+
+        if screen_name == "all-in-one" and _bird_change_requires_clear(ctx, prev_ctx):
+            logger.info("[DISPLAY UPDATE] Bird window rollover requires maintenance clear")
+            self._update_display(
+                clear=True,
+                ctx=ctx,
+                intent=DisplayIntent.MAINTENANCE_CLEAR,
+            )
             return
 
         # Respect the minimum interval for regular ticks/data events.

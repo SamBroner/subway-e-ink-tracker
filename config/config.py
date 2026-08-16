@@ -112,7 +112,7 @@ class TimingConfig:
     WEATHER_UPDATE_SECONDS: int = 300
     SUBWAY_UPDATE_SECONDS: int = 5
     CITIBIKE_UPDATE_SECONDS: int = 60
-    BIRD_UPDATE_SECONDS: int = 900
+    BIRD_UPDATE_SECONDS: int = 60
     DISPLAY_MIN_INTERVAL_SECONDS: int = 1
     DISPLAY_CLEAR_COOLDOWN_SECONDS: int = 5
 
@@ -135,6 +135,9 @@ class Config:
         self.BIRDNET_SSH_HOST = os.getenv('BIRDNET_SSH_HOST', 'birdnet')
         self.BIRDNET_DB_PATH = os.getenv('BIRDNET_DB_PATH', '~/BirdNET-Pi/scripts/birds.db')
         self.BIRD_WINDOW_HOURS = int(os.getenv('BIRD_WINDOW_HOURS', '24'))
+        self.BIRD_ROLLOVER_LOOKBACK_MINUTES = int(
+            os.getenv('BIRD_ROLLOVER_LOOKBACK_MINUTES', '15')
+        )
         self.BIRD_RESULT_LIMIT = int(os.getenv('BIRD_RESULT_LIMIT', '15'))
         self.BIRD_ASSET_DIR = os.getenv('BIRD_ASSET_DIR', 'assets/birds/illustrations')
         self.BIRD_MOCK_DATA = os.getenv('BIRD_MOCK_DATA', 'assets/birds/mock_detections.json')

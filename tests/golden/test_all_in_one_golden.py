@@ -51,6 +51,31 @@ SCENARIOS = [
             daily_low=22,
         ),
     ),
+    (
+        "all_in_one_hot",
+        fx.make_weather(
+            current_code=fx.CODE_PARTLY,
+            current_temp=100,
+            hourly_code=fx.CODE_PARTLY,
+            hourly_temp=99,
+            daily_high=104,
+            daily_low=82,
+        ),
+    ),
+    (
+        "all_in_one_cold",
+        fx.make_weather(
+            current_code=fx.CODE_HEAVY_SNOW,
+            current_precip=91,
+            current_temp=2,
+            hourly_code=fx.CODE_HEAVY_SNOW,
+            hourly_precip=82,
+            hourly_snow_cm=1.6,
+            hourly_temp=1,
+            daily_high=7,
+            daily_low=-4,
+        ),
+    ),
 ]
 
 

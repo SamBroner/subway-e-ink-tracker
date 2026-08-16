@@ -101,45 +101,120 @@ class AllInOnePane(Pane):
 
     def _draw_header(self, surface: PaneSurface, weather: dict, now: datetime) -> None:
         current = weather.get("current", {})
-        condition = str(current.get("condition", {}).get("text", "Weather unavailable")).upper()
-        condition_font = fonts.get("large")
-        condition_lines = self._wrap_text(condition, condition_font, 320, surface)
-        for index, line in enumerate(condition_lines[:2]):
-            surface.text((24, 14 + index * 35), line, font=condition_font, fill=0)
-
         forecast_days = weather.get("forecast", {}).get("forecastday", [])
         today = forecast_days[0].get("day", {}) if forecast_days else {}
         high = self._temperature_text(today.get("maxtemp_f"))
         low = self._temperature_text(today.get("mintemp_f"))
-        detail_y = 58 if len(condition_lines) == 1 else 94
-        surface.text((24, detail_y), "TODAY", font=fonts.get("small"), fill=0)
+        current_temp = self._temperature_text(current.get("temp_f"))
+
+        icon = utils.getWeatherIcon(current, 136)
+        alpha = icon.getchannel("A") if icon.mode == "RGBA" else icon
+        visible = alpha.getbbox()
+        if visible:
+            visible_icon = icon.crop(visible)
+            target_height = 112
+            scale = min(136 / visible_icon.width, target_height / visible_icon.height)
+            visible_icon = visible_icon.resize(
+                (
+                    max(1, round(visible_icon.width * scale)),
+                    max(1, round(visible_icon.height * scale)),
+                ),
+                Image.Resampling.LANCZOS,
+            )
+            icon_y = 5 + (target_height - visible_icon.height) // 2
+            surface.paste(visible_icon, (144, icon_y), visible_icon)
+
+        numeric_current = current_temp.rstrip("°")
+        digit_count = sum(character.isdigit() for character in numeric_current)
+        current_center = 68 if digit_count >= 3 else 66
+        current_size = 72 if digit_count >= 3 else 76
+        current_font = fonts.get("xheader").font_variant(size=current_size)
         surface.text(
-            (24, detail_y + 27),
-            f"H{high} · L{low}",
-            font=fonts.get("large"),
+            (current_center, 45),
+            numeric_current,
+            font=current_font,
             fill=0,
+            anchor="mm",
+        )
+        numeric_width = surface.textlength(numeric_current, font=current_font)
+        degree_font = fonts.get("large").font_variant(
+            size=max(24, round(current_size * 0.46))
+        )
+        surface.text(
+            (current_center + numeric_width / 2 + 2, 22),
+            "°",
+            font=degree_font,
+            fill=0,
+            anchor="lm",
         )
 
+        daily_text = f"{high}/{low}"
+        daily_size = 27 if len(daily_text) >= 8 else 31
+        daily_font = fonts.get("large").font_variant(size=daily_size)
+        slash_width = surface.textlength("/", font=daily_font)
+        high_width = surface.textlength(high, font=daily_font)
+        low_width = surface.textlength(low, font=daily_font)
+        gap = 1
+        if digit_count == 1:
+            slash_x = 66
+        elif digit_count == 2:
+            slash_x = current_center + 3
+        else:
+            total_width = high_width + gap + slash_width + gap + low_width
+            range_left = current_center + 6 - total_width / 2
+            slash_x = range_left + high_width + gap + slash_width / 2
+        surface.text((slash_x, 109), "/", font=daily_font, fill=0, anchor="mm")
         surface.text(
-            (801, 10),
+            (slash_x - slash_width / 2 - gap, 109),
+            high,
+            font=daily_font,
+            fill=0,
+            anchor="rm",
+        )
+        surface.text(
+            (slash_x + slash_width / 2 + gap, 109),
+            low,
+            font=daily_font,
+            fill=0,
+            anchor="lm",
+        )
+
+        minute_font = fonts.get("xheader").font_variant(size=64)
+        seconds_font = fonts.get("large").font_variant(size=52)
+        suffix_font = fonts.get("small").font_variant(size=20)
+        suffix = now.strftime("%p")[0].lower()
+        suffix_right = 796
+        suffix_width = surface.textlength(suffix, font=suffix_font)
+        seconds_text = now.strftime(":%S")
+        seconds_width = surface.textlength(seconds_text, font=seconds_font)
+        seconds_left = suffix_right - suffix_width - 7 - seconds_width
+        surface.text(
+            (seconds_left - 2, 47),
+            now.strftime("%-I:%M"),
+            font=minute_font,
+            fill=0,
+            anchor="rm",
+        )
+        surface.text(
+            (seconds_left, 47),
+            seconds_text,
+            font=seconds_font,
+            fill=0,
+            anchor="lm",
+        )
+        surface.text(
+            (suffix_right, 59),
+            suffix,
+            font=suffix_font,
+            fill=0,
+            anchor="rm",
+        )
+        surface.text(
+            (suffix_right, 94),
             now.strftime("%a, %b %-d").upper(),
             font=fonts.get("medium"),
             fill=0,
             anchor="rt",
-        )
-        surface.text(
-            (738, 42),
-            now.strftime("%-I:%M"),
-            font=fonts.get("xheader"),
-            fill=0,
-            anchor="rt",
-        )
-        surface.text(
-            (748, 81),
-            now.strftime(":%S %p").lower(),
-            font=fonts.get("small"),
-            fill=0,
-            anchor="lm",
         )
 
     def _draw_birds(
@@ -348,7 +423,7 @@ class AllInOnePane(Pane):
         self._draw_route(
             surface,
             48,
-            128,
+            140,
             202,
             config.TRAIN_LINE_1,
             self._route_minutes(trains, config.TRAIN_LINE_1, ctx.now),
@@ -357,7 +432,7 @@ class AllInOnePane(Pane):
         self._draw_route(
             surface,
             280,
-            360,
+            372,
             446,
             config.TRAIN_LINE_2,
             self._route_minutes(trains, config.TRAIN_LINE_2, ctx.now),

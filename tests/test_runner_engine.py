@@ -341,3 +341,51 @@ def test_bird_list_screen_does_not_redraw_each_tick_when_data_unchanged():
     runner._check_display_update()
 
     assert len(disp.calls) == 1
+
+
+def test_all_in_one_append_only_bird_update_uses_fast_refresh():
+    runner, disp, clock = _ready_runner()
+    screen_manager.select(1)  # all-in-one
+    runner._check_display_update()
+    clock.advance(2)
+    previous_bird = _bird_result().observations[0]
+    runner.data_hub.handle_bird_update(BirdResult(
+        observations=[
+            previous_bird,
+            BirdObservation(
+                sci_name="Cardinalis cardinalis",
+                common_name="Northern Cardinal",
+                count=2,
+                last_seen="2026-06-11 22:42:10",
+                max_confidence=0.92,
+            ),
+        ],
+        window_hours=24,
+    ))
+
+    assert disp.calls[1]["clear"] is False
+    assert disp.calls[1]["partial"] is True
+    assert disp.calls[1]["intent"] == DisplayIntent.NORMAL
+
+
+def test_all_in_one_bird_rollover_uses_maintenance_clear():
+    runner, disp, clock = _ready_runner()
+    screen_manager.select(1)  # all-in-one
+    runner._check_display_update()
+    clock.advance(2)
+    runner.data_hub.handle_bird_update(BirdResult(
+        observations=[
+            BirdObservation(
+                sci_name="Cardinalis cardinalis",
+                common_name="Northern Cardinal",
+                count=2,
+                last_seen="2026-06-11 22:42:10",
+                max_confidence=0.92,
+            ),
+        ],
+        window_hours=24,
+    ))
+
+    assert disp.calls[1]["clear"] is True
+    assert disp.calls[1]["partial"] is False
+    assert disp.calls[1]["intent"] == DisplayIntent.MAINTENANCE_CLEAR

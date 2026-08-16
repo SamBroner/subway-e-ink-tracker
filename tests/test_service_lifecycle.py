@@ -1,6 +1,7 @@
 import threading
 import time
 import subprocess
+from datetime import datetime
 
 import pytest
 
@@ -116,13 +117,68 @@ def test_bird_summary_query_orders_by_recency_first(monkeypatch):
     assert "ORDER BY count DESC" not in query
 
 
-def test_bird_summary_query_uses_sensor_localtime_window(monkeypatch):
-    monkeypatch.setattr("services.bird_service.config.BIRD_WINDOW_HOURS", 24)
+def test_bird_summary_query_uses_hourly_bucket_with_overlap(monkeypatch):
+    monkeypatch.setattr("services.bird_service.config.BIRD_ROLLOVER_LOOKBACK_MINUTES", 15)
     service = BirdService()
 
     query = service._summary_query()
 
-    assert "datetime('now', 'localtime', '-24 hours')" in query
+    assert "'now', 'localtime', 'start of hour', '-15 minutes'" in query
+
+
+def test_bird_hour_is_append_only_until_rollover():
+    now = [datetime(2026, 7, 31, 8, 0)]
+    service = BirdService(now=lambda: now[0])
+    first = BirdObservation(
+        sci_name="Poecile atricapillus",
+        common_name="Black-capped Chickadee",
+        count=4,
+        last_seen="2026-07-31 07:59:00",
+        max_confidence=0.91,
+    )
+    updated_first = BirdObservation(
+        sci_name=first.sci_name,
+        common_name=first.common_name,
+        count=9,
+        last_seen="2026-07-31 08:14:00",
+        max_confidence=0.97,
+    )
+    new_bird = BirdObservation(
+        sci_name="Cardinalis cardinalis",
+        common_name="Northern Cardinal",
+        count=12,
+        last_seen="2026-07-31 08:13:00",
+        max_confidence=0.95,
+    )
+
+    initial = service._stabilize_current_hour(BirdResult([first], window_hours=24))
+    service._current_result = initial
+    now[0] = datetime(2026, 7, 31, 8, 15)
+    additive = service._stabilize_current_hour(
+        BirdResult([updated_first, new_bird], window_hours=24)
+    )
+
+    assert additive.observations[0] == first
+    assert additive.observations[1] == BirdObservation(
+        sci_name=new_bird.sci_name,
+        common_name=new_bird.common_name,
+        count=first.count,
+        last_seen=new_bird.last_seen,
+        max_confidence=new_bird.max_confidence,
+    )
+
+    service._current_result = additive
+    now[0] = datetime(2026, 7, 31, 9, 0)
+    rollover = service._stabilize_current_hour(BirdResult([new_bird], window_hours=24))
+
+    assert rollover.observations == [new_bird]
+
+
+def test_bird_updates_align_to_wall_clock_boundaries(monkeypatch):
+    service = BirdService()
+    monkeypatch.setattr("services.bird_service.time.time", lambda: 1200.0)
+
+    assert service._seconds_until_next_update(900) == 600
 
 
 def test_bird_service_parses_ssh_sqlite_json(monkeypatch):
